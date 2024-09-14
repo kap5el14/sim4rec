@@ -38,36 +38,47 @@ def similarity_between_events(row1, row2):
         weights[f'neap({num_attr})'] = weight / 2
     return sum([sims[k] * weights[k] for k in sims.keys()]) / common.similarity_weights.event
 
-def similarity_between_trace_headers(df1, df2):
+def similarity_between_trace_headers(df1, df2, log=False):
     common = Common.get_instance()
-    #print(f"{df2[common.event_log_specs.case_id].iloc[0]}/{len(df2)}:")
+    component_sims = {}
     def asp():
-        diffs = []
+        c_sims = []
         for a in [UNIQUE_ACTIVITIES, ACTIVITIES_MEAN, ACTIVITIES_STD]:
-            diffs.append(abs(df1[a].iloc[0] - df2[a].iloc[0]))
-        #print(f"\t{UNIQUE_ACTIVITIES}: {diffs[0]}, {ACTIVITIES_MEAN}: {diffs[1]}, {ACTIVITIES_STD}: {diffs[2]}")
-        return 1 - sum(diffs) / 3
+            r = 1 - abs(df1[a].iloc[-1] - df2[a].iloc[-1])
+            component_sims[a] = r
+            c_sims.append(r)
+        return sum(c_sims) / 3
     def ctap(attr):
-        if df1[attr].iloc[0] == df2[attr].iloc[0]:
-            #print(f"\t{attr}: {1}")
-            return 1
-        #print(f"\t{attr}: {0}")
-        return 0
+        r = 1 if df1[attr].iloc[0] == df2[attr].iloc[0] else 0
+        component_sims[attr] = r
+        return r
     def ntap(attr):
-        #print("")
-        return 1 - abs(df1[attr].iloc[0] - df2[attr].iloc[0])
+        r = 1 - abs(df1[attr].iloc[0] - df2[attr].iloc[0])
+        component_sims[attr] = r
+        return r
     def anap(attr):
-        diffs = []
-        for a in [f'{attr}{SUM}', f'{attr}{AVG}']:
-            diffs.append(abs(df1[a].iloc[0] - df2[a].iloc[0]))
-        return 1 - sum(diffs) / 2
+        c_sims = []
+        for a in [f'{attr}{CUMSUM}', f'{attr}{CUMAVG}']:
+            r = 1 - abs(df1[a].iloc[-1] - df2[a].iloc[-1])
+            component_sims[a] = r
+            c_sims.append(r)
+        return sum(c_sims) / 2
     def ttp():
-        diffs = []
-        for a in [TRACE_START, TRACE_END, TRACE_DURATION]:
-            diffs.append(abs(df1[a].iloc[0] - df2[a].iloc[0]))
-        return 1 - sum(diffs) / 3
+        c_sims = []
+        r = 1 - abs(df1[TRACE_START].iloc[0] - df2[TRACE_START].iloc[0])
+        component_sims[TRACE_START] = r
+        c_sims.append(r)
+        r = 1 - abs(df1[TIME_FROM_TRACE_START].iloc[-1] - df2[TIME_FROM_TRACE_START].iloc[-1])
+        component_sims[TRACE_DURATION] = r
+        c_sims.append(r)
+        r = 1 - abs(df1[common.event_log_specs.timestamp].iloc[-1] - df2[common.event_log_specs.timestamp].iloc[-1])
+        component_sims[TRACE_END] = r
+        c_sims.append(r)
+        return sum(c_sims) / 3
     def tlp():
-        return 1 - abs(df1[TRACE_LENGTH].iloc[0] - df2[TRACE_LENGTH].iloc[0])
+        r = 1 - abs(df1[INDEX].iloc[-1] - df2[INDEX].iloc[-1])
+        component_sims[TRACE_LENGTH] = r
+        return r
     sims = {
         'asp': asp(),
         'ttp': ttp(),
@@ -87,9 +98,12 @@ def similarity_between_trace_headers(df1, df2):
     for num_attr, weight in common.similarity_weights.numerical_trace_attributes.items():
         sims[f"ntap({num_attr})"] = ntap(num_attr)
         weights[f"ntap({num_attr})"] = weight
-    return sum([sims[k] * weights[k] for k in sims.keys()]) / common.similarity_weights.trace
+    result = sum([sims[k] * weights[k] for k in sims.keys()]) / common.similarity_weights.trace
+    if log:
+        return result, component_sims
+    return result
 
-def similarity_between_traces(df1, df2):
+def similarity_between_traces(df1, df2, log=False):
     common = Common.get_instance()
     def ed(distance_matrix, m, n):
         dp = np.zeros((m + 1, n + 1))
@@ -148,8 +162,12 @@ def similarity_between_traces(df1, df2):
         for j in range(num_rows_df2):
             row2 = df2.iloc[j]
             distance_matrix[i, j] = 1 - similarity_between_events(row1, row2)
+    if log:
+        th_sim, th_component_similarities = similarity_between_trace_headers(df1, df2, log=True)
+    else:
+        th_sim = similarity_between_trace_headers(df1, df2)
     sims = {
-        'th': similarity_between_trace_headers(df1, df2),
+        'th': th_sim,
         'ed': ed(distance_matrix, num_rows_df1, num_rows_df2),
         'gm': gm(distance_matrix, num_rows_df1, num_rows_df2),
         'emd': emd(num_rows_df1, num_rows_df2)
@@ -160,4 +178,7 @@ def similarity_between_traces(df1, df2):
         'gm': common.similarity_weights.event / 3,
         'emd': common.similarity_weights.event / 3
     }
-    return sum([sims[k] * weights[k] for k in sims.keys()])
+    result = sum([sims[k] * weights[k] for k in sims.keys()])
+    if log:
+        return result, sims, th_component_similarities
+    return result

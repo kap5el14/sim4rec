@@ -32,33 +32,30 @@ if len(sys.argv) > 1:
         )
 
     def create_add_attributes(common: Common):
-        def add_attributes(df: pd.DataFrame, only_trace_attributes=False) -> pd.DataFrame:
+        def add_attributes(df: pd.DataFrame) -> pd.DataFrame:
             grouped = df.groupby(common.event_log_specs.case_id)
             THRESHOLD = 1e-10
-            df[TRACE_LENGTH] = grouped[common.event_log_specs.case_id].transform('size')
-            if not only_trace_attributes:
-                for attr in common.similarity_weights.numerical_event_attributes.keys():
-                    df[f'{attr}{CUMSUM}'] = grouped[attr].cumsum().apply(lambda y: y if abs(y) > THRESHOLD else 0)
-                    df[f'{attr}{CUMAVG}'] = grouped[attr].transform(lambda x: x.expanding().mean()).apply(lambda y: y if abs(y) > THRESHOLD else 0)
-                    df[f'{attr}{MW_SUM}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).sum()).apply(lambda y: y if abs(y) > THRESHOLD else 0)
-                    df[f'{attr}{MW_AVG}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).mean()).apply(lambda y: y if abs(y) > THRESHOLD else 0)
-                df[common.event_log_specs.timestamp] = (df[common.event_log_specs.timestamp] - pd.Timestamp("1970-01-01")).dt.total_seconds()
-                df[TIME_FROM_TRACE_START] = grouped[common.event_log_specs.timestamp].transform(lambda x: x - x.min())
-                df[TIME_FROM_PREVIOUS_EVENT] = grouped[common.event_log_specs.timestamp].diff().fillna(0)
-                df[ACTIVITY_OCCURRENCE] = df.groupby([common.event_log_specs.case_id, common.event_log_specs.activity]).cumcount() + 1
-                df[INDEX] = df.groupby(common.event_log_specs.case_id).cumcount()
+            df[INDEX] = df.groupby(common.event_log_specs.case_id).cumcount()
             for attr in common.similarity_weights.numerical_event_attributes.keys():
-                df[f'{attr}{SUM}'] = grouped[attr].transform('sum').apply(lambda y: y if abs(y) > THRESHOLD else 0)
-                df[f'{attr}{AVG}'] = grouped[attr].transform('mean').apply(lambda y: y if abs(y) > THRESHOLD else 0)
-            trace_start = df.groupby(common.event_log_specs.case_id)[common.event_log_specs.timestamp].transform('min')
-            trace_end = df.groupby(common.event_log_specs.case_id)[common.event_log_specs.timestamp].transform('max')
-            trace_duration = trace_end - trace_start
-            df[TRACE_START] = trace_start
-            df[TRACE_END] = trace_end
-            df[TRACE_DURATION] = trace_duration
-            df[UNIQUE_ACTIVITIES] = grouped[common.event_log_specs.activity].transform('nunique')
-            df[ACTIVITIES_MEAN] = grouped[ACTIVITY_OCCURRENCE].transform('mean')
-            df[ACTIVITIES_STD] = grouped[ACTIVITY_OCCURRENCE].transform('std').fillna(0)
+                df[f'{attr}{CUMSUM}'] = grouped[attr].cumsum().apply(lambda y: y if abs(y) > THRESHOLD else 0)
+                df[f'{attr}{CUMAVG}'] = grouped[attr].transform(lambda x: x.expanding().mean()).apply(lambda y: y if abs(y) > THRESHOLD else 0)
+                df[f'{attr}{MW_SUM}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).sum()).apply(lambda y: y if abs(y) > THRESHOLD else 0)
+                df[f'{attr}{MW_AVG}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).mean()).apply(lambda y: y if abs(y) > THRESHOLD else 0)
+            df[common.event_log_specs.timestamp] = (df[common.event_log_specs.timestamp] - pd.Timestamp("1970-01-01")).dt.total_seconds()
+            df[TIME_FROM_TRACE_START] = grouped[common.event_log_specs.timestamp].transform(lambda x: x - x.min())
+            df[TIME_FROM_PREVIOUS_EVENT] = grouped[common.event_log_specs.timestamp].diff().fillna(0)
+            df[ACTIVITY_OCCURRENCE] = df.groupby([common.event_log_specs.case_id, common.event_log_specs.activity]).cumcount() + 1
+            df[TRACE_START] = grouped[common.event_log_specs.timestamp].transform('min')
+            def expanding_unique_count(series):
+                unique_counts = []
+                seen = set()
+                for value in series:
+                    seen.add(value)
+                    unique_counts.append(len(seen))
+                return unique_counts
+            df[UNIQUE_ACTIVITIES] = grouped[common.event_log_specs.activity].transform(expanding_unique_count)
+            df[ACTIVITIES_MEAN] = grouped[ACTIVITY_OCCURRENCE].transform(lambda x: x.expanding().mean())
+            df[ACTIVITIES_STD] = grouped[ACTIVITY_OCCURRENCE].transform(lambda x: x.expanding().std().fillna(0))
             return df
         return add_attributes
 
@@ -113,21 +110,20 @@ if len(sys.argv) > 1:
                 return row
             return normalize
         attribute_normalizers = {}
-        for attr in [TIME_FROM_TRACE_START, TIME_FROM_PREVIOUS_EVENT, INDEX] + list(itertools.chain.from_iterable([[attr, f'{attr}{CUMSUM}', f'{attr}{CUMAVG}', f'{attr}{MW_SUM}', f'{attr}{MW_AVG}'] for attr in common.similarity_weights.numerical_event_attributes.keys()])):
+        for attr in [TIME_FROM_TRACE_START, TIME_FROM_PREVIOUS_EVENT, INDEX, UNIQUE_ACTIVITIES, ACTIVITIES_MEAN, ACTIVITIES_STD] + list(itertools.chain.from_iterable([[attr, f'{attr}{CUMSUM}', f'{attr}{CUMAVG}', f'{attr}{MW_SUM}', f'{attr}{MW_AVG}'] for attr in common.similarity_weights.numerical_event_attributes.keys()])):
             perc_values = np.percentile(common.train_df[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
             attribute_normalizers[attr] = create_normalizer_with_percentiles(attr, perc_values)
-        for attr in [TRACE_DURATION, UNIQUE_ACTIVITIES, ACTIVITIES_MEAN, ACTIVITIES_STD, TRACE_LENGTH] + list(common.similarity_weights.numerical_trace_attributes.keys()) + list(itertools.chain.from_iterable([[attr, f'{attr}{SUM}', f'{attr}{AVG}'] for attr in common.similarity_weights.numerical_event_attributes.keys()])):
+        for attr in list(common.similarity_weights.numerical_trace_attributes.keys()):
             perc_values = np.percentile(common.train_df.groupby(common.event_log_specs.case_id).first()[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
             attribute_normalizers[attr] = create_normalizer_with_percentiles(attr, perc_values)
         attribute_normalizers[ACTIVITY_OCCURRENCE] = create_activity_occurrences_normalizer()
-        for attr in [TRACE_START, TRACE_END, common.event_log_specs.timestamp]:
+        for attr in [TRACE_START, common.event_log_specs.timestamp]:
             attribute_normalizers[attr] = create_timestamp_normalizer(attr)
-        def normalize(df: pd.DataFrame, only_trace_attributes=False) -> pd.DataFrame:
+        def normalize(df: pd.DataFrame) -> pd.DataFrame:
             def normalize_row(row: pd.DataFrame):
                 new_row = row.copy()
                 for attr, normalizer in attribute_normalizers.items():
-                    if (not only_trace_attributes) or (only_trace_attributes and (attr.endswith(SUM) or attr.endswith(AVG) or attr in [UNIQUE_ACTIVITIES, ACTIVITIES_MEAN, ACTIVITIES_STD, TRACE_END, TRACE_DURATION, TRACE_LENGTH])):
-                        new_row = normalizer(new_row)
+                    new_row = normalizer(new_row)
                 return new_row
             return df.apply(normalize_row, axis=1)
         return normalize
@@ -144,8 +140,8 @@ if len(sys.argv) > 1:
     normalize = create_normalizer()
     common.train_df = normalize(common.train_df)
     def create_preprocessor(add_attributes, normalize):
-        def preprocess(df: pd.DataFrame, only_trace_attributes=False):
-            return normalize(add_attributes(df, only_trace_attributes), only_trace_attributes)
+        def preprocess(df: pd.DataFrame):
+            return normalize(add_attributes(df))
         return preprocess
     common.preprocess = create_preprocessor(add_attributes, normalize)
     common.test_df = common.preprocess(common.test_df)

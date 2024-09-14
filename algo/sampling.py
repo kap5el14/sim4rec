@@ -29,11 +29,9 @@ def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20, log=F
             sim = -sim
             if sim < best_sim:
                 continue
-            #print(f"{peer_df[common.event_log_specs.case_id].iloc[0]}\t{i}\t{sim}")
             trimmed_df = peer_df.head(i)
-            trimmed_df = Common.get_instance().preprocess(df=trimmed_df, only_trace_attributes=True)
             current_sim = similarity_between_trace_headers(df, trimmed_df)
-            print(f"{i}: {current_sim}")
+            #print(f"{i}: {current_sim}")
             if current_sim >= best_sim:
                 best_sim = current_sim
                 best_df = trimmed_df
@@ -48,7 +46,7 @@ def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20, log=F
         best_dfs.append((best_sim, best_df))
         if log:
             log_results.append(new_log_result)
-        print()
+        #print()
     best_dfs_sorted = sorted(best_dfs, key=lambda x: x[0], reverse=True)
     result = [df for _, df in best_dfs_sorted[:min(sample_size, len(best_dfs_sorted))]]
     if log:
