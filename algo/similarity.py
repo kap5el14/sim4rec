@@ -145,14 +145,19 @@ def similarity_between_traces(df1, df2, log=False):
             for j in range(n):
                 row2 = df2.iloc[j]
                 distance_matrix2[i, j] = 1 - similarity_between_events(row1, row2)
-        hist_A = distance_matrix1[np.triu_indices_from(distance_matrix1, k=1)]
-        hist_B = distance_matrix2[np.triu_indices_from(distance_matrix2, k=1)]
-        if hist_A.size == 0 and hist_B.size == 0:
+        distances_A = distance_matrix1[np.triu_indices_from(distance_matrix1, k=1)]
+        distances_B = distance_matrix2[np.triu_indices_from(distance_matrix2, k=1)]
+        if distances_A.size == 0 and distances_B.size == 0:
             return 1
-        if hist_A.size == 0 or hist_B.size == 0: 
+        if distances_A.size == 0 or distances_B.size == 0: 
             return 0
-        hist_A = hist_A / np.sum(hist_A)
-        hist_B = hist_B / np.sum(hist_B)
+        all_values = list(distances_A) + list(distances_B)
+        perc_values = np.percentile(all_values, [0,10,20,30,40,50,60,70,80,90,100])
+        hist_A, _ = np.histogram(distances_A, bins=perc_values)
+        hist_B, _ = np.histogram(distances_B, bins=perc_values)
+        max_sum = max(np.sum(hist_A), np.sum(hist_B))
+        hist_A = hist_A / max_sum
+        hist_B = hist_B / max_sum
         return 1 - wasserstein_distance(hist_A, hist_B)
     num_rows_df1 = len(df1)
     num_rows_df2 = len(df2)
