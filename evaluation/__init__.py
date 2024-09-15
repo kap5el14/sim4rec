@@ -1,1 +1,1 @@
-from evaluation.similarity_test import plot_similarities
+from evaluation.similarity_test import plot_similarities, pearson_correlation

@@ -151,4 +151,5 @@ else:
     with open('data/preprocessed/common.pkl', 'rb') as f:
         Common.set_instance(dill.load(f))
 
-plot_similarities()
+#plot_similarities()
+pearson_correlation()

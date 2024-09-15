@@ -52,3 +52,50 @@ def plot_similarities(sample_size=1):
     i = len(second_pass(dfs=[peer_df], df=df)[0])
     plot_similarities(t_sims, th_sims, ed_sims, emd_sims, gm_sims, i)
     plot_component_similarities(pd.DataFrame(component_sims), i)
+
+def pearson_correlation():
+    def plot_correlations(maxima):
+        df = pd.DataFrame(maxima)
+        correlation_matrix = df.corr(method='pearson')
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt=".2f", vmin=-1, vmax=1)
+        plt.title('Pearson Correlation Between Pairs of Lists')
+        plt.show()
+    common = Common.get_instance()
+    test_case_ids = list(common.test_df[common.event_log_specs.case_id].unique())
+    maxima = {
+        't_sims': [],
+        'th_sims': [],
+        'ed_sims': [],
+        'emd_sims': [],
+        'gm_sims': [],
+        'identified': []
+    }
+    for test_case_id in tqdm.tqdm(test_case_ids, "Testing set"):
+        df = common.test_df[common.test_df[common.event_log_specs.case_id] == test_case_id]
+        idx = random.choice(list(range(1, len(df) + 1)))
+        df = df.head(idx)
+        [peer_df] = first_pass(sample_size=1)
+        res = {
+            't_sims': [],
+            'th_sims': [],
+            'ed_sims': [],
+            'emd_sims': [],
+            'gm_sims': []
+        }
+        for i in range(1, len(peer_df) + 1):
+            trimmed_df = peer_df.head(i)
+            t_sim, sims, c_sims = similarity_between_traces(df, trimmed_df, log=True)
+            res['t_sims'].append(t_sim)
+            res['th_sims'].append(sims['th'])
+            res['ed_sims'].append(sims['ed'])
+            res['emd_sims'].append(sims['emd'])
+            res['gm_sims'].append(sims['gm'])
+        for key in res.keys():
+            results = res[key]
+            maxima[key].append(results.index(max(results)) + 1)
+        maxima['identified'].append(len(second_pass(dfs=[peer_df], df=df)[0]))
+    plot_correlations(maxima)
+
+    
+        
