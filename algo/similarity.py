@@ -131,7 +131,7 @@ def similarity_between_traces(df1, df2, log=False):
                 set1.add(i)
                 set2.add(j)
             if len(set1) == m or len(set2) == n:
-                return 1 - total_cost / min(m, n)
+                return 1 - (total_cost + max(m,n) - min(m,n)) / max(m,n)
     def emd(m, n):
         distance_matrix1 = np.zeros((m, m))
         for i in range(m):
