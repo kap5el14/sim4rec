@@ -3,7 +3,7 @@ from scipy.stats import wasserstein_distance
 
 
 def similarity_between_events(row1, row2):
-    common = Common.get_instance()
+    common = Common.instance
     def ap():
         if row1[common.event_log_specs.activity] != row2[common.event_log_specs.activity]:
             return 0
@@ -39,7 +39,7 @@ def similarity_between_events(row1, row2):
     return sum([sims[k] * weights[k] for k in sims.keys()]) / common.similarity_weights.event
 
 def similarity_between_trace_headers(df1, df2, log=False):
-    common = Common.get_instance()
+    common = Common.instance
     component_sims = {}
     def asp():
         c_sims = []
@@ -104,7 +104,7 @@ def similarity_between_trace_headers(df1, df2, log=False):
     return result
 
 def similarity_between_traces(df1, df2, log=False):
-    common = Common.get_instance()
+    common = Common.instance
     def ed(distance_matrix, m, n):
         dp = np.zeros((m + 1, n + 1))
         for i in range(1, m + 1):
