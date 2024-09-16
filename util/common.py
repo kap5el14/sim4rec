@@ -1,5 +1,5 @@
 from util.constants import *
-from util.obj import EventLogSpecs, SimilarityWeights
+from util.obj import EventLogSpecs, SimilarityWeights, PerformanceWeights
 from dataclasses import dataclass, field
 import pandas as pd
 import numpy as np
@@ -25,6 +25,7 @@ class Common:
     name: str = field(init=True, default=None)
     event_log_specs: EventLogSpecs = field(init=True, default=None)
     similarity_weights: SimilarityWeights = field(init=True, default=None)
+    performance_weights: PerformanceWeights = field(init=True, default=None)
     train_df: pd.DataFrame = field(init=True, default=None)
     test_df: pd.DataFrame = field(init=True, default=None)
     preprocess: Callable[[pd.DataFrame, bool], pd.DataFrame] = field(init=False, default=None)

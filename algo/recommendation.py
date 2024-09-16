@@ -1,11 +1,51 @@
 from util.common import *
 from algo.similarity import similarity_between_events, similarity_between_trace_headers
+from data.success import is_successful
 
-def compute_kpi_dict(df: pd.DataFrame) -> dict[str, float]:
-    pass
 
-def compute_future_performance(kpi_dict: dict[str, float]) -> float:
-    pass
+def compute_kpi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
+    common = Common.instance
+    if not is_successful(df):
+        return {}, 0
+    kpi_dict = {}
+    kpi_weights = {}
+    if common.performance_weights.trace_length:
+        kpi_dict[TRACE_LENGTH] = 1 - df[TRACE_LENGTH].iloc[-1]
+        kpi_weights[TRACE_LENGTH] = common.performance_weights.trace_length
+    if common.performance_weights.trace_duration:
+        kpi_dict[TRACE_DURATION] = 1 - df[TRACE_DURATION].iloc[-1]
+        kpi_weights[TRACE_DURATION] = common.performance_weights.trace_duration
+    for k, v in common.performance_weights.numerical_trace_attributes.items():
+        if 'min' in v:
+            kpi_dict[k] = 1 - df[k].iloc[-1]
+        elif 'max' in v:
+            kpi_dict[k] = df[k].iloc[-1]
+        else:
+            raise ValueError
+        kpi_weights[k] = v[1]
+    for k, v in common.performance_weights.categorical_trace_attributes.items():
+        value = v[0]
+        name = f"{k}=={value}"
+        kpi_dict[name] = 1 if df[k] == value else 0
+        kpi_weights[name] = v[1]
+    for k, v in common.performance_weights.numerical_event_attributes.items():
+        if 'sum' in v:
+            t = CUMSUM
+        elif 'avg' in v:
+            t = CUMAVG
+        else:
+            raise ValueError
+        name = f"{k}{t}"
+        if 'min' in v:
+            kpi_dict[name] = 1 - df[name].iloc[-1]
+        elif 'max' in v:
+            kpi_dict[name] = df[name].iloc[-1]
+        else:
+            raise ValueError
+        kpi_weights[name] = v[2]
+    future_performance = sum([kpi_dict[k] * kpi_weights[k] for k in kpi_dict.keys()])
+    return kpi_dict, future_performance  
+
 
 @dataclass
 class RecommendationCandidate:
@@ -25,8 +65,7 @@ class RecommendationCandidate:
         complete_peer_df_filtered = complete_peer_df[[TIME_FROM_TRACE_START, INDEX]]
         difference_df = complete_peer_df_filtered - last_values
         proximities = 1 - difference_df.abs().sum(axis=1)
-        kpi_dict = compute_kpi_dict(complete_peer_df)
-        fp = compute_future_performance(kpi_dict)
+        kpi_dict, fp = compute_kpi(complete_peer_df)
         candidates = []
         for i in range(len(complete_peer_df)):
             acted_on = False
@@ -135,8 +174,4 @@ def make_recommendations(dfs: list[tuple[pd.DataFrame, float]], df: pd.DataFrame
     for _, vals in candidates_map.items():
         candidates += vals
     return Recommendation.generate_recommendations(candidates=candidates)
-
-
-
-            
 
