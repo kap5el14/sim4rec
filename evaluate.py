@@ -23,7 +23,7 @@ if len(sys.argv) > 1:
         test_case_ids = case_ids[test_index]
         train_df = df[df[event_log_specs.case_id].isin(train_case_ids)]
         test_df = df[df[event_log_specs.case_id].isin(test_case_ids)]
-        folds.append(Common(name=f"fold_{fold_index}", event_log_specs=event_log_specs, similarity_weights=similarity_weights, performance_weights=performance_weights, train_df=train_df, test_df=test_df))
+        folds.append(Common(name=f"fold_{fold_index}", event_log_specs=event_log_specs, similarity_weights=similarity_weights, performance_weights=performance_weights, original_df=df, train_df=train_df, test_df=test_df))
         fold_index += 1
 else:
     for i in range(k):
@@ -31,4 +31,5 @@ else:
         folds.append(Common.load(name))
 
 #plot_similarities()
-pearson_correlation(folds)
+#pearson_correlation(folds)
+recommend(folds)

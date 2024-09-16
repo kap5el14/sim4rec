@@ -54,8 +54,14 @@ class RecommendationCandidate:
     similarity: float
     future_performance: float
     kpi_dict: dict[str, float]
-    similar_candidates: list['RecommendationCandidate'] = field(init=False, default=[])
+    similar_candidates: list['RecommendationCandidate'] = field(init=False, default=None)
     marked: bool = field(init=False, default=False)
+
+    def __post_init__(self):
+        self.similar_candidates = []
+
+    def __hash__(self):
+        return hash(self.row.name)
 
     @classmethod
     def generate_candidates(cls, peer_df: pd.DataFrame, df: pd.DataFrame, sim: float):
@@ -64,7 +70,7 @@ class RecommendationCandidate:
         last_values = df[[TIME_FROM_TRACE_START, INDEX]].iloc[-1]
         complete_peer_df_filtered = complete_peer_df[[TIME_FROM_TRACE_START, INDEX]]
         difference_df = complete_peer_df_filtered - last_values
-        proximities = 1 - difference_df.abs().sum(axis=1)
+        proximities = 1 - difference_df.abs().mean(axis=1)
         kpi_dict, fp = compute_kpi(complete_peer_df)
         candidates = []
         for i in range(len(complete_peer_df)):
@@ -76,7 +82,8 @@ class RecommendationCandidate:
                     acted_on = True
                     break
             if not acted_on:
-                candidates.append(RecommendationCandidate(row=row, proximity=proximities[i], similarity=sim, future_performance=fp, kpi_dict=kpi_dict))
+                candidates.append(RecommendationCandidate(row=row, proximity=proximities.iloc[i], similarity=sim, future_performance=fp, kpi_dict=kpi_dict))
+        return candidates
 
     @classmethod
     def connect_candidates(cls, candidates1: list['RecommendationCandidate'], candidates2: list['RecommendationCandidate'], sim):
@@ -96,6 +103,22 @@ class Recommendation:
     kpi_dict: dict[str, float]
     proximity: float
     similarity: float
+    id: int
+
+    def __eq__(self, value: 'Recommendation') -> bool:
+        return self.id == value.id
+    
+    def __hash__(self) -> int:
+        return hash(self.id)
+    
+    def __str__(self) -> str:
+        return f"support: {self.support}\nsimilarity: {self.similarity}\nproximity: {self.proximity}\nKPI: {self.future_performance}\n\n{self.event}\n\n------------------------------\n"
+
+    def dominates(self, rec: 'Recommendation'):
+        not_worse = self.support >= rec.support and self.future_performance >= rec.future_performance and self.proximity >= rec.proximity and self.similarity >= rec.similarity
+        better = self.support > rec.support or self.future_performance > rec.future_performance or self.proximity > rec.proximity or self.similarity > rec.similarity
+        return not_worse and better
+
 
     @classmethod
     def generate_recommendations(cls, candidates: list[RecommendationCandidate]) -> list['Recommendation']:
@@ -115,7 +138,8 @@ class Recommendation:
             clusters.append(cluster)
         common = Common.instance
         all_peers = set()
-        recommendations = []
+        recommendations: list[Recommendation] = []
+        rec_index = 0
         for cluster in clusters:
             peers = set()
             similarity_sum = 0
@@ -123,7 +147,7 @@ class Recommendation:
             future_performance_sum = 0
             kpi_sums = {}
             for candidate in cluster:
-                case_id = candidate.row[common.event_log_specs.case_id].iloc[0]
+                case_id = candidate.row[common.event_log_specs.case_id]
                 peers.add(case_id)
                 all_peers.add(case_id)
                 similarity_sum += candidate.similarity
@@ -135,11 +159,11 @@ class Recommendation:
                     else:
                         kpi_sums[k] = v
             support = len(peers) / len(all_peers)
-            similarity = similarity_sum / len(peers)
-            proximity = proximity_sum / len(peers)
-            future_performance = future_performance_sum / len(peers)
-            kpi_dict = {k: v / len(peers) for k, v in kpi_sums.items()}
-            candidates_df = pd.DataFrame([c.row for c in cluster])
+            similarity = similarity_sum / len(cluster)
+            proximity = proximity_sum / len(cluster)
+            future_performance = future_performance_sum / len(cluster)
+            kpi_dict = {k: v / len(cluster) for k, v in kpi_sums.items()}
+            candidates_df = pd.DataFrame([common.original_df.loc[c.row.name] for c in cluster])
             numerical_cols = candidates_df.select_dtypes(include=[np.number])
             categorical_cols = candidates_df.select_dtypes(exclude=[np.number])
             numerical_avg = numerical_cols.mean()
@@ -152,22 +176,39 @@ class Recommendation:
                 future_performance=future_performance,
                 kpi_dict=kpi_dict,
                 proximity=proximity,
-                similarity=similarity
+                similarity=similarity,
+                id=rec_index
             )
             recommendations.append(rec)
-        return recommendations
+            rec_index += 1
+        pareto: set[Recommendation] = set()
+        for rec1 in recommendations:
+            dominated = set()
+            flag = False
+            for rec2 in pareto:
+                if rec1.dominates(rec2):
+                    dominated.add(rec2)
+                elif rec2.dominates(rec1):
+                    dominated.add(rec1)
+                    flag = True
+                    break
+            pareto = pareto.difference(dominated)
+            if not flag:
+                pareto.add(rec1)
+        sorted_pareto = list(sorted(pareto, key=lambda x: x.future_performance + (x.support + x.similarity + x.proximity) / 3, reverse=True))
+        return sorted_pareto[:min(3, len(sorted_pareto))]
 
-def make_recommendations(dfs: list[tuple[pd.DataFrame, float]], df: pd.DataFrame) -> list[Recommendation]:
+def make_recommendations(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame) -> list[Recommendation]:
     n = len(dfs)
     candidates_map = {}
     for i in range(n):
-        df1 = dfs[i][0]
-        candidates_map[i] = RecommendationCandidate.generate_candidates(peer_df=df1, df=df, sim=dfs[i][1])
+        df1 = dfs[i][1]
+        candidates_map[i] = RecommendationCandidate.generate_candidates(peer_df=df1, df=df, sim=dfs[i][0])
     for i in range(n):
-        df1 = dfs[i][0]
+        df1 = dfs[i][1]
         candidates1 = candidates_map[i]
         for j in range(i + 1, n):
-            df2 = dfs[j][0]
+            df2 = dfs[j][1]
             candidates2 = candidates_map[j]
             RecommendationCandidate.connect_candidates(candidates1=candidates1, candidates2=candidates2, sim=similarity_between_trace_headers(df1, df2))
     candidates = []

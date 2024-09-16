@@ -1,12 +1,12 @@
 from util.common import *
 from algo.similarity import similarity_between_trace_headers, similarity_between_traces
 
-def first_pass(sample_size=10) -> list[pd.DataFrame]:
+def first_pass(sample_size=300) -> list[pd.DataFrame]:
     common = Common.instance
-    case_ids = common.train_df[common.event_log_specs.case_id]
+    case_ids = common.train_df[common.event_log_specs.case_id].unique()
     return [common.train_df[common.train_df[common.event_log_specs.case_id] == case_id] for case_id in random.sample(list(case_ids), min(sample_size, len(case_ids)))]
 
-def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20, log=False) -> list[pd.DataFrame]:
+def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=100, log=False) -> list[pd.DataFrame]:
     common = Common.instance
     best_dfs: list[tuple[float, pd.DataFrame]] = []
     if log:
@@ -53,14 +53,14 @@ def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20, log=F
         return result, log_results
     return result
 
-def third_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=5) -> list[pd.DataFrame]:
+def third_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=10) -> list[tuple[float, pd.DataFrame]]:
     common = Common.instance
     best_dfs: list[tuple[float, pd.DataFrame]] = []
     for peer_df in tqdm.tqdm(dfs, desc='Third Pass: Processing Peer DataFrames'):
         sim = similarity_between_traces(df, peer_df)
         best_dfs.append((sim, peer_df))
     best_dfs_sorted = sorted(best_dfs, key=lambda x: x[0], reverse=True)
-    return [df for _, df in best_dfs_sorted[:min(sample_size, len(best_dfs_sorted))]]
+    return best_dfs_sorted[:min(sample_size, len(best_dfs_sorted))]
 
-def sample_peers(df) -> list[pd.DataFrame]:
+def sample_peers(df) -> list[tuple[float, pd.DataFrame]]:
     return third_pass(dfs=second_pass(dfs=first_pass(), df=df), df=df)

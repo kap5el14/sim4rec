@@ -7,8 +7,7 @@ PEER_GROUP_SIZE = 15
 WINDOW_SIZE = 3
 TRACE_START = 'trace_start'
 TRACE_END = 'trace_end'
-TRACE_DURATION = 'trace_duration'
-TIME_FROM_TRACE_START = 'time_from_trace_start'
+TRACE_DURATION = TIME_FROM_TRACE_START = 'trace_duration'
 TIME_FROM_PREVIOUS_EVENT = 'time_from_previous_event'
 CUMSUM = '_cumsum'
 CUMAVG = '_cumavg'
