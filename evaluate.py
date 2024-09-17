@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore', category=SettingWithCopyWarning)
 k = 5
 folds = []
 if len(sys.argv) > 1:
-    log_path, event_log_specs, similarity_weights, performance_weights = read_conf(sys.argv[1])
+    log_path, event_log_specs, similarity_weights, performance_weights, output_format = read_conf(sys.argv[1])
     df = pd.read_csv(log_path)
     df[event_log_specs.timestamp] = pd.to_datetime(df[event_log_specs.timestamp])
     df.sort_values(by=[event_log_specs.case_id, event_log_specs.timestamp], inplace=True)
@@ -23,7 +23,7 @@ if len(sys.argv) > 1:
         test_case_ids = case_ids[test_index]
         train_df = df[df[event_log_specs.case_id].isin(train_case_ids)]
         test_df = df[df[event_log_specs.case_id].isin(test_case_ids)]
-        folds.append(Common(name=f"fold_{fold_index}", event_log_specs=event_log_specs, similarity_weights=similarity_weights, performance_weights=performance_weights, original_df=df, train_df=train_df, test_df=test_df))
+        folds.append(Common(name=f"fold_{fold_index}", event_log_specs=event_log_specs, similarity_weights=similarity_weights, performance_weights=performance_weights, output_format=output_format, original_df=df, train_df=train_df, test_df=test_df))
         fold_index += 1
 else:
     for i in range(k):

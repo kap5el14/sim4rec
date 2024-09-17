@@ -164,11 +164,13 @@ class Recommendation:
             future_performance = future_performance_sum / len(cluster)
             kpi_dict = {k: v / len(cluster) for k, v in kpi_sums.items()}
             candidates_df = pd.DataFrame([common.original_df.loc[c.row.name] for c in cluster])
-            numerical_cols = candidates_df.select_dtypes(include=[np.number])
-            categorical_cols = candidates_df.select_dtypes(exclude=[np.number])
+            numerical_cols = candidates_df[common.output_format.numerical_attributes]
+            categorical_cols = candidates_df[common.output_format.categorical_attributes]
+            timestamp_cols = candidates_df[common.output_format.timestamp_attributes]
             numerical_avg = numerical_cols.mean()
             categorical_mode = categorical_cols.mode().iloc[0]
-            result_event = pd.concat([numerical_avg, categorical_mode])
+            timestamp_avg = timestamp_cols.apply(lambda x: x.mean())
+            result_event = pd.concat([numerical_avg, categorical_mode, timestamp_avg])
             rec = Recommendation(
                 event=result_event,
                 peers=peers,

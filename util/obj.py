@@ -31,12 +31,22 @@ class PerformanceWeights:
     categorical_trace_attributes: dict[str, float]
     numerical_event_attributes: dict[str, list]
 
+@dataclass
+class OutputFormat:
+    numerical_attributes: list[str]
+    categorical_attributes: list[str]
+    timestamp_attributes: list[str]
+
+    def __post_init__(self):
+        self.numerical_attributes = list(set(self.numerical_attributes))
+        self.categorical_attributes = list(set(self.categorical_attributes))
+        self.timestamp_attributes = list(set(self.timestamp_attributes))
+
 def read_conf(conf_file_path) -> tuple[str, EventLogSpecs, SimilarityWeights, PerformanceWeights]:
     with open(conf_file_path, 'r') as conf_file:
         config = json.load(conf_file)
         log_path = config['log_path']
         def try_read(strings: list[str], default=None):
-            result = None
             try:
                 result = config
                 for s in strings:
@@ -65,4 +75,9 @@ def read_conf(conf_file_path) -> tuple[str, EventLogSpecs, SimilarityWeights, Pe
             categorical_trace_attributes=try_read(['performance_weights', 'categorical_trace_attributes'], default={}),
             numerical_event_attributes=try_read(['performance_weights', 'numerical_event_attributes'], default={})
         )
-    return log_path, event_log_specs, similarity_weights, performance_specs
+        output_format = OutputFormat(
+            numerical_attributes=try_read(['output_attributes', 'numerical'], default=[]),
+            categorical_attributes=try_read(['output_attributes', 'categorical'], default=[]) + [event_log_specs.activity],
+            timestamp_attributes=try_read(['output_attributes', 'timestamp'], default=[]) + [event_log_specs.timestamp]
+        )
+    return log_path, event_log_specs, similarity_weights, performance_specs, output_format
