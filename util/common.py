@@ -7,6 +7,7 @@ from typing import Callable
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.manifold import MDS
+from sklearn.cluster import AgglomerativeClustering
 import random
 import dill
 import heapq
@@ -17,6 +18,7 @@ import tqdm
 import warnings
 import cProfile
 import itertools
+from copy import deepcopy
 
 
 

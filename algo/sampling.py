@@ -6,7 +6,7 @@ def first_pass(sample_size=300) -> list[pd.DataFrame]:
     case_ids = common.train_df[common.event_log_specs.case_id].unique()
     return [common.train_df[common.train_df[common.event_log_specs.case_id] == case_id] for case_id in random.sample(list(case_ids), min(sample_size, len(case_ids)))]
 
-def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=100, log=False) -> list[pd.DataFrame]:
+def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20, log=False) -> list[pd.DataFrame]:
     common = Common.instance
     best_dfs: list[tuple[float, pd.DataFrame]] = []
     if log:

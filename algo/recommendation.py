@@ -96,14 +96,17 @@ class RecommendationCandidate:
 
 @dataclass
 class Recommendation:
-    event: pd.Series
-    peers: set[str]
-    support: float
-    future_performance: float
-    kpi_dict: dict[str, float]
-    proximity: float
-    similarity: float
-    id: int
+    cluster: list[RecommendationCandidate] = field(init=True, default=None)
+    all_peers: list[str] = field(init=True, default=None)
+    id: int = field(init=True, default=None)
+    peers: set[str] = field(init=False, default=None)
+    event: pd.Series = field(init=False, default=None)
+    support: float = field(init=False, default=None)
+    future_performance: float = field(init=False, default=None)
+    kpi_dict: dict[str, float] = field(init=False, default=None)
+    proximity: float = field(init=False, default=None)
+    similarity: float = field(init=False, default=None)
+    marked: bool = field(init=False, default=False)
 
     def __eq__(self, value: 'Recommendation') -> bool:
         return self.id == value.id
@@ -112,20 +115,56 @@ class Recommendation:
         return hash(self.id)
     
     def __str__(self) -> str:
-        return f"support: {self.support}\nsimilarity: {self.similarity}\nproximity: {self.proximity}\nKPI: {self.future_performance}\n\n{self.event}\n\n------------------------------\n"
+        return f"peers: {self.peers}\nsupport: {self.support}\nsimilarity: {self.similarity}\nproximity: {self.proximity}\nKPI: {self.future_performance}\n\n{self.event}\n"
 
+    def __post_init__(self):
+        common = Common.instance
+        self.peers = set()
+        similarity_sum = 0
+        proximity_sum = 0
+        future_performance_sum = 0
+        kpi_sums = {}
+        for candidate in self.cluster:
+            case_id = candidate.row[common.event_log_specs.case_id]
+            self.peers.add(case_id)
+            similarity_sum += candidate.similarity
+            proximity_sum += candidate.proximity
+            future_performance_sum += candidate.future_performance
+            for k, v in candidate.kpi_dict.items():
+                if k in kpi_sums:
+                    kpi_sums[k] += v
+                else:
+                    kpi_sums[k] = v
+        self.support = len(self.peers) / len(self.all_peers)
+        self.similarity = similarity_sum / len(self.cluster)
+        self.proximity = proximity_sum / len(self.cluster)
+        self.future_performance = future_performance_sum / len(self.cluster)
+        self.kpi_dict = {k: v / len(self.cluster) for k, v in kpi_sums.items()}
+        candidates_df = pd.DataFrame([common.original_df.loc[c.row.name] for c in self.cluster])
+        numerical_cols = candidates_df[common.output_format.numerical_attributes]
+        categorical_cols = candidates_df[common.output_format.categorical_attributes]
+        timestamp_cols = candidates_df[common.output_format.timestamp_attributes]
+        numerical_avg = numerical_cols.mean()
+        categorical_mode = categorical_cols.mode().iloc[0]
+        timestamp_avg = timestamp_cols.apply(lambda x: x.mean())
+        self.event = pd.concat([numerical_avg, categorical_mode, timestamp_avg])
+    
+    def score(self):
+        return self.future_performance + (self.support + self.similarity + self.proximity) / 3
     def dominates(self, rec: 'Recommendation'):
         not_worse = self.support >= rec.support and self.future_performance >= rec.future_performance and self.proximity >= rec.proximity and self.similarity >= rec.similarity
         better = self.support > rec.support or self.future_performance > rec.future_performance or self.proximity > rec.proximity or self.similarity > rec.similarity
         return not_worse and better
 
-
     @classmethod
     def generate_recommendations(cls, candidates: list[RecommendationCandidate]) -> list['Recommendation']:
+        common = Common.instance
         clusters: list[set[RecommendationCandidate]] = []
+        all_peers = set()
         for c in candidates:
             if c.marked:
                 continue
+            all_peers.add(c.row[common.event_log_specs.case_id])
             cluster = set([c])
             to_visit = set(c.similar_candidates)
             while to_visit:
@@ -136,53 +175,11 @@ class Recommendation:
                     if not n.marked:
                         to_visit.add(n)
             clusters.append(cluster)
-        common = Common.instance
-        all_peers = set()
         recommendations: list[Recommendation] = []
         rec_index = 0
         for cluster in clusters:
-            peers = set()
-            similarity_sum = 0
-            proximity_sum = 0
-            future_performance_sum = 0
-            kpi_sums = {}
-            for candidate in cluster:
-                case_id = candidate.row[common.event_log_specs.case_id]
-                peers.add(case_id)
-                all_peers.add(case_id)
-                similarity_sum += candidate.similarity
-                proximity_sum += candidate.proximity
-                future_performance_sum += candidate.future_performance
-                for k, v in candidate.kpi_dict.items():
-                    if k in kpi_sums:
-                        kpi_sums[k] += v
-                    else:
-                        kpi_sums[k] = v
-            support = len(peers) / len(all_peers)
-            similarity = similarity_sum / len(cluster)
-            proximity = proximity_sum / len(cluster)
-            future_performance = future_performance_sum / len(cluster)
-            kpi_dict = {k: v / len(cluster) for k, v in kpi_sums.items()}
-            candidates_df = pd.DataFrame([common.original_df.loc[c.row.name] for c in cluster])
-            numerical_cols = candidates_df[common.output_format.numerical_attributes]
-            categorical_cols = candidates_df[common.output_format.categorical_attributes]
-            timestamp_cols = candidates_df[common.output_format.timestamp_attributes]
-            numerical_avg = numerical_cols.mean()
-            categorical_mode = categorical_cols.mode().iloc[0]
-            timestamp_avg = timestamp_cols.apply(lambda x: x.mean())
-            result_event = pd.concat([numerical_avg, categorical_mode, timestamp_avg])
-            rec = Recommendation(
-                event=result_event,
-                peers=peers,
-                support=support,
-                future_performance=future_performance,
-                kpi_dict=kpi_dict,
-                proximity=proximity,
-                similarity=similarity,
-                id=rec_index
-            )
-            recommendations.append(rec)
-            rec_index += 1
+            recommendations.append(Recommendation(cluster=cluster, all_peers=all_peers, id=rec_index))
+            rec_index +=1
         pareto: set[Recommendation] = set()
         for rec1 in recommendations:
             dominated = set()
@@ -197,10 +194,32 @@ class Recommendation:
             pareto = pareto.difference(dominated)
             if not flag:
                 pareto.add(rec1)
-        sorted_pareto = list(sorted(pareto, key=lambda x: x.future_performance + (x.support + x.similarity + x.proximity) / 3, reverse=True))
-        return sorted_pareto[:min(3, len(sorted_pareto))]
+        return list(pareto)
+    
+    @classmethod
+    def generate_scenarios(cls, recommendations: list['Recommendation']) -> list[list['Recommendation']]:
+        n = len(recommendations)
+        distance_matrix = np.zeros((n, n))
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    set1 = recommendations[i].peers
+                    set2 = recommendations[j].peers
+                    intersection = len(set1.intersection(set2))
+                    union = len(set1.union(set2))
+                    distance_matrix[i, j] = 1 - (intersection / union if union != 0 else 0)
+        clustering = AgglomerativeClustering(linkage='average')
+        cluster_labels = clustering.fit_predict(distance_matrix)
+        clusters = {}
+        for idx, label in enumerate(cluster_labels):
+            if label not in clusters:
+                clusters[label] = []
+            clusters[label].append(recommendations[idx])
+        scenarios = list(clusters.values())
+        sorted_scenarios = list(sorted(scenarios, key=lambda scenario: np.mean([rec.score() for rec in scenario]), reverse=True))
+        return [list(sorted(scenario, key=lambda x: x.score(), reverse=True)) for scenario in sorted_scenarios]
 
-def make_recommendations(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame) -> list[Recommendation]:
+def recommend_scenarios(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame, sample_size=3) -> list[Recommendation]:
     n = len(dfs)
     candidates_map = {}
     for i in range(n):
@@ -216,5 +235,6 @@ def make_recommendations(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame
     candidates = []
     for _, vals in candidates_map.items():
         candidates += vals
-    return Recommendation.generate_recommendations(candidates=candidates)
+    scenarios = Recommendation.generate_scenarios(recommendations=Recommendation.generate_recommendations(candidates=candidates))
+    return scenarios[:min(sample_size, len(scenarios))]
 
