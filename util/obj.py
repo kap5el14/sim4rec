@@ -60,13 +60,13 @@ def read_conf(conf_file_path) -> tuple[str, EventLogSpecs, SimilarityWeights, Pe
             timestamp=config['timestamp']
         )
         similarity_weights = SimilarityWeights(
-            activity=try_read(['similarity_weights', 'activity']),
-            timestamp=try_read(['similarity_weights', 'timestamp']),
-            numerical_event_attributes=try_read(['similarity_weights', 'numerical_event_attributes']),
-            categorical_event_attributes=try_read(['similarity_weights', 'categorical_event_attributes']),
-            numerical_trace_attributes=try_read(['similarity_weights', 'numerical_trace_attributes']),
-            categorical_trace_attributes=try_read(['similarity_weights', 'categorical_trace_attributes']),
-            trace_length=try_read(['similarity_weights', 'trace_length'])
+            activity=try_read(['similarity_weights', 'activity'], default=0),
+            timestamp=try_read(['similarity_weights', 'timestamp'], default=0),
+            numerical_event_attributes=try_read(['similarity_weights', 'numerical_event_attributes'], default={}),
+            categorical_event_attributes=try_read(['similarity_weights', 'categorical_event_attributes'], default={}),
+            numerical_trace_attributes=try_read(['similarity_weights', 'numerical_trace_attributes'], default={}),
+            categorical_trace_attributes=try_read(['similarity_weights', 'categorical_trace_attributes'], default={}),
+            trace_length=try_read(['similarity_weights', 'trace_length'], default=0)
         )
         performance_specs = PerformanceWeights(
             trace_length=try_read(['performance_weights', 'trace_length']),
