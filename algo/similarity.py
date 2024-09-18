@@ -5,7 +5,7 @@ from scipy.stats import wasserstein_distance
 def similarity_between_events(row1, row2):
     common = Common.instance
     def ap():
-        if row1[common.event_log_specs.activity] != row2[common.event_log_specs.activity]:
+        if row1[common.conf.event_log_specs.activity] != row2[common.conf.event_log_specs.activity]:
             return 0
         return 1 - abs(row1[ACTIVITY_OCCURRENCE] - row2[ACTIVITY_OCCURRENCE]) / 2
     def ceap(attr):
@@ -19,7 +19,7 @@ def similarity_between_events(row1, row2):
         return 1 - sum(diffs) / 5
     def tep():
         diffs = []
-        for a in [common.event_log_specs.timestamp, TIME_FROM_TRACE_START, TIME_FROM_PREVIOUS_EVENT]:
+        for a in [common.conf.event_log_specs.timestamp, TIME_FROM_TRACE_START, TIME_FROM_PREVIOUS_EVENT]:
             diffs.append(abs(row1[a] - row2[a]))
         return 1 - sum(diffs) / 3
     sims = {
@@ -27,16 +27,16 @@ def similarity_between_events(row1, row2):
         'tep': tep(),
     }
     weights = {
-        'ap': common.similarity_weights.activity / 2,
-        'tep': common.similarity_weights.timestamp / 2,
+        'ap': common.conf.similarity_weights.activity / 2,
+        'tep': common.conf.similarity_weights.timestamp / 2,
     }
-    for cat_attr, weight in common.similarity_weights.categorical_event_attributes.items():
+    for cat_attr, weight in common.conf.similarity_weights.categorical_event_attributes.items():
         sims[f'ceap({cat_attr})'] = ceap(cat_attr)
         weights[f'ceap({cat_attr})'] = weight
-    for num_attr, weight in common.similarity_weights.numerical_event_attributes.items():
+    for num_attr, weight in common.conf.similarity_weights.numerical_event_attributes.items():
         sims[f'neap({num_attr})'] = neap(num_attr)
         weights[f'neap({num_attr})'] = weight / 2
-    return sum([sims[k] * weights[k] for k in sims.keys()]) / common.similarity_weights.event
+    return sum([sims[k] * weights[k] for k in sims.keys()]) / common.conf.similarity_weights.event
 
 def similarity_between_trace_headers(df1, df2, log=False):
     common = Common.instance
@@ -71,7 +71,7 @@ def similarity_between_trace_headers(df1, df2, log=False):
         r = 1 - abs(df1[TIME_FROM_TRACE_START].iloc[-1] - df2[TIME_FROM_TRACE_START].iloc[-1])
         component_sims[TRACE_DURATION] = r
         c_sims.append(r)
-        r = 1 - abs(df1[common.event_log_specs.timestamp].iloc[-1] - df2[common.event_log_specs.timestamp].iloc[-1])
+        r = 1 - abs(df1[common.conf.event_log_specs.timestamp].iloc[-1] - df2[common.conf.event_log_specs.timestamp].iloc[-1])
         component_sims[TRACE_END] = r
         c_sims.append(r)
         return sum(c_sims) / 3
@@ -85,20 +85,20 @@ def similarity_between_trace_headers(df1, df2, log=False):
         'tlp': tlp()
     }
     weights = {
-        'asp': common.similarity_weights.activity / 2,
-        'ttp': common.similarity_weights.timestamp / 2,
-        'tlp': common.similarity_weights.trace_length
+        'asp': common.conf.similarity_weights.activity / 2,
+        'ttp': common.conf.similarity_weights.timestamp / 2,
+        'tlp': common.conf.similarity_weights.trace_length
     }
-    for cat_attr, weight in common.similarity_weights.categorical_trace_attributes.items():
+    for cat_attr, weight in common.conf.similarity_weights.categorical_trace_attributes.items():
         sims[f"ctap({cat_attr})"] = ctap(cat_attr)
         weights[f"ctap({cat_attr})"] = weight
-    for num_attr, weight in common.similarity_weights.numerical_event_attributes.items():
+    for num_attr, weight in common.conf.similarity_weights.numerical_event_attributes.items():
         sims[f"anap({num_attr})"] = anap(num_attr)
         weights[f"anap({num_attr})"] = weight / 2
-    for num_attr, weight in common.similarity_weights.numerical_trace_attributes.items():
+    for num_attr, weight in common.conf.similarity_weights.numerical_trace_attributes.items():
         sims[f"ntap({num_attr})"] = ntap(num_attr)
         weights[f"ntap({num_attr})"] = weight
-    result = sum([sims[k] * weights[k] for k in sims.keys()]) / common.similarity_weights.trace
+    result = sum([sims[k] * weights[k] for k in sims.keys()]) / common.conf.similarity_weights.trace
     if log:
         return result, component_sims
     return result
@@ -178,10 +178,10 @@ def similarity_between_traces(df1, df2, log=False):
         'emd': emd(num_rows_df1, num_rows_df2)
     }
     weights = {
-        'th': common.similarity_weights.trace,
-        'ed': common.similarity_weights.event / 3,
-        'gm': common.similarity_weights.event / 3,
-        'emd': common.similarity_weights.event / 3
+        'th': common.conf.similarity_weights.trace,
+        'ed': common.conf.similarity_weights.event / 3,
+        'gm': common.conf.similarity_weights.event / 3,
+        'emd': common.conf.similarity_weights.event / 3
     }
     result = sum([sims[k] * weights[k] for k in sims.keys()])
     if log:

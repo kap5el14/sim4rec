@@ -1,2 +1,1 @@
-from evaluation.similarity_test import plot_similarities, pearson_correlation
-from evaluation.recommendation_test import recommend
+from evaluation.evaluate import evaluate

@@ -1,0 +1,1 @@
+from view.endpoint import start_endpoint

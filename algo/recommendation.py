@@ -9,13 +9,13 @@ def compute_kpi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
         return {}, 0
     kpi_dict = {}
     kpi_weights = {}
-    if common.performance_weights.trace_length:
+    if common.conf.performance_weights.trace_length:
         kpi_dict[TRACE_LENGTH] = 1 - df[TRACE_LENGTH].iloc[-1]
-        kpi_weights[TRACE_LENGTH] = common.performance_weights.trace_length
-    if common.performance_weights.trace_duration:
+        kpi_weights[TRACE_LENGTH] = common.conf.performance_weights.trace_length
+    if common.conf.performance_weights.trace_duration:
         kpi_dict[TRACE_DURATION] = 1 - df[TRACE_DURATION].iloc[-1]
-        kpi_weights[TRACE_DURATION] = common.performance_weights.trace_duration
-    for k, v in common.performance_weights.numerical_trace_attributes.items():
+        kpi_weights[TRACE_DURATION] = common.conf.performance_weights.trace_duration
+    for k, v in common.conf.performance_weights.numerical_trace_attributes.items():
         if 'min' in v:
             kpi_dict[k] = 1 - df[k].iloc[-1]
         elif 'max' in v:
@@ -23,12 +23,12 @@ def compute_kpi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
         else:
             raise ValueError
         kpi_weights[k] = v[1]
-    for k, v in common.performance_weights.categorical_trace_attributes.items():
+    for k, v in common.conf.performance_weights.categorical_trace_attributes.items():
         value = v[0]
         name = f"{k}=={value}"
         kpi_dict[name] = 1 if df[k] == value else 0
         kpi_weights[name] = v[1]
-    for k, v in common.performance_weights.numerical_event_attributes.items():
+    for k, v in common.conf.performance_weights.numerical_event_attributes.items():
         if 'sum' in v:
             t = CUMSUM
         elif 'avg' in v:
@@ -66,7 +66,7 @@ class RecommendationCandidate:
     @classmethod
     def generate_candidates(cls, peer_df: pd.DataFrame, df: pd.DataFrame, sim: float):
         common = Common.instance
-        complete_peer_df = common.train_df[common.train_df[common.event_log_specs.case_id] == peer_df[common.event_log_specs.case_id].iloc[0]]
+        complete_peer_df = common.train_df[common.train_df[common.conf.event_log_specs.case_id] == peer_df[common.conf.event_log_specs.case_id].iloc[0]]
         last_values = df[[TIME_FROM_TRACE_START, INDEX]].iloc[-1]
         complete_peer_df_filtered = complete_peer_df[[TIME_FROM_TRACE_START, INDEX]]
         difference_df = complete_peer_df_filtered - last_values
@@ -125,7 +125,7 @@ class Recommendation:
         future_performance_sum = 0
         kpi_sums = {}
         for candidate in self.cluster:
-            case_id = candidate.row[common.event_log_specs.case_id]
+            case_id = candidate.row[common.conf.event_log_specs.case_id]
             self.peers.add(case_id)
             similarity_sum += candidate.similarity
             proximity_sum += candidate.proximity
@@ -140,10 +140,10 @@ class Recommendation:
         self.proximity = proximity_sum / len(self.cluster)
         self.future_performance = future_performance_sum / len(self.cluster)
         self.kpi_dict = {k: v / len(self.cluster) for k, v in kpi_sums.items()}
-        candidates_df = pd.DataFrame([common.original_df.loc[c.row.name] for c in self.cluster])
-        numerical_cols = candidates_df[common.output_format.numerical_attributes]
-        categorical_cols = candidates_df[common.output_format.categorical_attributes]
-        timestamp_cols = candidates_df[common.output_format.timestamp_attributes]
+        candidates_df = pd.DataFrame([common.conf.df.loc[c.row.name] for c in self.cluster])
+        numerical_cols = candidates_df[common.conf.output_format.numerical_attributes]
+        categorical_cols = candidates_df[common.conf.output_format.categorical_attributes]
+        timestamp_cols = candidates_df[common.conf.output_format.timestamp_attributes]
         numerical_avg = numerical_cols.mean()
         categorical_mode = categorical_cols.mode().iloc[0]
         timestamp_avg = timestamp_cols.apply(lambda x: x.mean())
@@ -164,7 +164,7 @@ class Recommendation:
         for c in candidates:
             if c.marked:
                 continue
-            all_peers.add(c.row[common.event_log_specs.case_id])
+            all_peers.add(c.row[common.conf.event_log_specs.case_id])
             cluster = set([c])
             to_visit = set(c.similar_candidates)
             while to_visit:

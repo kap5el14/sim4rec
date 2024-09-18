@@ -29,8 +29,8 @@ def plot_similarities(sample_size=1):
         plt.tight_layout()
         plt.savefig("data/component_sims.jpg")
     common = Common.instance
-    sampled_test_case_id = random.choice(list(common.test_df[common.event_log_specs.case_id]))
-    df = common.test_df[common.test_df[common.event_log_specs.case_id] == sampled_test_case_id]
+    sampled_test_case_id = random.choice(list(common.test_df[common.conf.event_log_specs.case_id]))
+    df = common.test_df[common.test_df[common.conf.event_log_specs.case_id] == sampled_test_case_id]
     idx = random.choice(list(range(1, len(df) + 1)))
     df = df.head(idx)
     [peer_df] = first_pass(sample_size=1)
@@ -71,9 +71,9 @@ def pearson_correlation(folds):
     }
     for common in tqdm.tqdm(folds, "Folds"):
         Common.set_instance(common)
-        test_case_ids = list(common.test_df[common.event_log_specs.case_id].unique())
+        test_case_ids = list(common.test_df[common.conf.event_log_specs.case_id].unique())
         for test_case_id in tqdm.tqdm(test_case_ids, "Testing set"):
-            df = common.test_df[common.test_df[common.event_log_specs.case_id] == test_case_id]
+            df = common.test_df[common.test_df[common.conf.event_log_specs.case_id] == test_case_id]
             idx = random.choice(list(range(1, len(df) + 1)))
             df = df.head(idx)
             [peer_df] = first_pass(sample_size=1)
