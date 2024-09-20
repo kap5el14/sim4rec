@@ -20,6 +20,7 @@ import itertools
 from copy import deepcopy
 import json
 import glob
+import importlib.util
 import os
 
 
@@ -44,6 +45,8 @@ class SimilarityWeights:
     def __post_init__(self):
         self.trace = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_trace_attributes.values()) + list(self.categorical_trace_attributes.values())) + sum(list(self.numerical_event_attributes.values())) / 2 + self.trace_length
         self.event = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_event_attributes.values())) / 2 + sum(list(self.categorical_event_attributes.values()))
+        if not (0.95 <= self.trace + self.event <= 1.05):
+            raise ValueError("Similarity weights don't sum up to 1!")
 
 @dataclass
 class PerformanceWeights:
@@ -53,21 +56,38 @@ class PerformanceWeights:
     categorical_trace_attributes: dict[str, float]
     numerical_event_attributes: dict[str, list]
 
+    def get_all_numerical_attributes(self):
+        res = list(self.numerical_trace_attributes.keys()) + [TRACE_LENGTH, TRACE_DURATION]
+        for attr, _ in self.numerical_event_attributes.items():
+            res.append(attr)
+            res.append(f'{attr}{CUMSUM}')
+            res.append(f'{attr}{CUMAVG}')
+            res.append(f'{attr}{MW_SUM}')
+            res.append(f'{attr}{MW_AVG}')
+        return res
+    
 @dataclass
 class OutputFormat:
     numerical_attributes: list[str]
     categorical_attributes: list[str]
     timestamp_attributes: list[str]
+    activities: list[str]
 
     def __post_init__(self):
         self.numerical_attributes = list(set(self.numerical_attributes))
         self.categorical_attributes = list(set(self.categorical_attributes))
         self.timestamp_attributes = list(set(self.timestamp_attributes))
 
+@dataclass
 class Configuration:
+    df: pd.DataFrame = field(init=False, default=None)
+    similarity_weights: SimilarityWeights = field(init=False, default=None)
+    performance_weights: PerformanceWeights = field(init=False, default=None)
+    custom_performance_function: Callable[[pd.DataFrame, pd.DataFrame], float] = field(init=False, default=None)
+    output_format: OutputFormat = field(init=False, default=None)
     def __init__(self, name):
         self.name = name
-        with open(os.path.join('conf', f"{name}.json"), 'r') as conf_file:
+        with open(os.path.join('user_files', 'conf', f"{name}.json"), 'r') as conf_file:
             config = json.load(conf_file)
             def try_read(strings: list[str], default=None):
                 try:
@@ -82,9 +102,9 @@ class Configuration:
                 activity=config['activity'],
                 timestamp=config['timestamp']
             )
-            log_path = config['log_path']
+            log_path = os.path.join('user_files', 'log', f'{name}.csv')
             self.df = pd.read_csv(log_path)
-            self.df[self.event_log_specs.timestamp] = pd.to_datetime(self.df[self.event_log_specs.timestamp])
+            self.df[self.event_log_specs.timestamp] = pd.to_datetime(self.df[self.event_log_specs.timestamp], format='mixed')
             self.df.sort_values(by=[self.event_log_specs.case_id, self.event_log_specs.timestamp], inplace=True)
             self.similarity_weights = SimilarityWeights(
                 activity=try_read(['similarity_weights', 'activity'], default=0),
@@ -101,11 +121,22 @@ class Configuration:
                 numerical_trace_attributes=try_read(['performance_weights', 'numerical_trace_attributes'], default={}),
                 categorical_trace_attributes=try_read(['performance_weights', 'categorical_trace_attributes'], default={}),
                 numerical_event_attributes=try_read(['performance_weights', 'numerical_event_attributes'], default={})
-            )
+                )
+            if 'performance_weights' not in config:
+                path = os.path.join('user_files', 'performance', f'{name}.py')
+                if not os.path.isfile(path):
+                    raise ModuleNotFoundError(f"{path} not found. The user has to specify either the performance weights or a custom performance function.")
+                spec = importlib.util.spec_from_file_location("custom_performance_module", path)
+                custom_performance_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(custom_performance_module)
+                if not hasattr(custom_performance_module, 'performance'):
+                    raise ValueError(f"Function 'performance' not found in {path}")
+                self.custom_performance_function = getattr(custom_performance_module, 'performance')
             self.output_format = OutputFormat(
                 numerical_attributes=try_read(['output_attributes', 'numerical'], default=[]),
                 categorical_attributes=try_read(['output_attributes', 'categorical'], default=[]) + [self.event_log_specs.activity],
-                timestamp_attributes=try_read(['output_attributes', 'timestamp'], default=[]) + [self.event_log_specs.timestamp]
+                timestamp_attributes=try_read(['output_attributes', 'timestamp'], default=[]) + [self.event_log_specs.timestamp],
+                activities=try_read(['output_attributes', 'activities'], default=list(self.df[self.event_log_specs.activity].unique()))
             )
     @classmethod
     def get_directory(cls, name: str, evaluation: bool):
@@ -132,11 +163,15 @@ class Common:
                 THRESHOLD = 1e-10
                 df[INDEX] = df.groupby(self.conf.event_log_specs.case_id).cumcount()
                 for attr in numerical_event_attributes:
-                    df[f'{attr}{CUMSUM}'] = grouped[attr].cumsum().apply(lambda y: y if abs(y) > THRESHOLD else 0)
-                    df[f'{attr}{CUMAVG}'] = grouped[attr].transform(lambda x: x.expanding().mean()).apply(lambda y: y if abs(y) > THRESHOLD else 0)
-                    df[f'{attr}{MW_SUM}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).sum()).apply(lambda y: y if abs(y) > THRESHOLD else 0)
-                    df[f'{attr}{MW_AVG}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).mean()).apply(lambda y: y if abs(y) > THRESHOLD else 0)
-                df[self.conf.event_log_specs.timestamp] = (df[self.conf.event_log_specs.timestamp] - pd.Timestamp("1970-01-01")).dt.total_seconds()
+                    df[f'{attr}{CUMSUM}'] = grouped[attr].transform(lambda x: x.expanding().sum()).apply(lambda y: y if y is not None and abs(y) > THRESHOLD else 0)
+                    df[f'{attr}{CUMAVG}'] = grouped[attr].transform(lambda x: x.expanding().mean()).apply(lambda y: y if y is not None and abs(y) > THRESHOLD else 0)
+                    df[f'{attr}{MW_SUM}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).sum()).apply(lambda y: y if y is not None and abs(y) > THRESHOLD else 0)
+                    df[f'{attr}{MW_AVG}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).mean()).apply(lambda y: y if y is not None and abs(y) > THRESHOLD else 0)
+                if pd.api.types.is_datetime64tz_dtype(df[self.conf.event_log_specs.timestamp]):
+                    unix_epoch = pd.Timestamp("1970-01-01", tz='UTC')
+                else:
+                    unix_epoch = pd.Timestamp("1970-01-01")
+                df[self.conf.event_log_specs.timestamp] = (df[self.conf.event_log_specs.timestamp] - unix_epoch).dt.total_seconds()
                 df[TIME_FROM_TRACE_START] = grouped[self.conf.event_log_specs.timestamp].transform(lambda x: x - x.min())
                 df[TIME_FROM_PREVIOUS_EVENT] = grouped[self.conf.event_log_specs.timestamp].diff().fillna(0)
                 df[ACTIVITY_OCCURRENCE] = df.groupby([self.conf.event_log_specs.case_id, self.conf.event_log_specs.activity]).cumcount() + 1
@@ -156,6 +191,8 @@ class Common:
         def create_normalizer():
             def create_normalizer_with_percentiles(attr, perc_values):
                 def normalize(row):
+                    if pd.isna(row[attr]):
+                        return row
                     if row[attr] <= perc_values[0]:
                         row[attr] = 0.0
                         return row
@@ -172,6 +209,7 @@ class Common:
                             else:
                                 row[attr] = (i-1)/10 + (row[attr] - lower_bound) / (upper_bound - lower_bound) * 0.1
                                 return row
+                    return row
                 return normalize
             def create_activity_occurrences_normalizer():
                 unique_activities = self.train_df[self.conf.event_log_specs.activity].unique()
@@ -206,11 +244,11 @@ class Common:
             attribute_normalizers = {}
             numerical_event_attributes = set(self.conf.similarity_weights.numerical_event_attributes.keys()).union(self.conf.performance_weights.numerical_event_attributes.keys())
             for attr in [TIME_FROM_TRACE_START, TIME_FROM_PREVIOUS_EVENT, INDEX, UNIQUE_ACTIVITIES, ACTIVITIES_MEAN, ACTIVITIES_STD] + list(itertools.chain.from_iterable([[attr, f'{attr}{CUMSUM}', f'{attr}{CUMAVG}', f'{attr}{MW_SUM}', f'{attr}{MW_AVG}'] for attr in numerical_event_attributes])):
-                perc_values = np.percentile(self.train_df[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+                perc_values = np.nanpercentile(self.train_df[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
                 attribute_normalizers[attr] = create_normalizer_with_percentiles(attr, perc_values)
             numerical_trace_attributes = set(self.conf.similarity_weights.numerical_trace_attributes.keys()).union(self.conf.performance_weights.numerical_trace_attributes.keys())
             for attr in numerical_trace_attributes:
-                perc_values = np.percentile(self.train_df.groupby(self.conf.event_log_specs.case_id).first()[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+                perc_values = np.nanpercentile(self.train_df.groupby(self.conf.event_log_specs.case_id).first()[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
                 attribute_normalizers[attr] = create_normalizer_with_percentiles(attr, perc_values)
             attribute_normalizers[ACTIVITY_OCCURRENCE] = create_activity_occurrences_normalizer()
             for attr in [TRACE_START, self.conf.event_log_specs.timestamp]:

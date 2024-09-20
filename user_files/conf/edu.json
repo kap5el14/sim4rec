@@ -1,6 +1,4 @@
 {
-    "log_path": "data/eventLog_0_Informatik_Bachelor of Science.csv",
-    "preprocessed": false,
     "case_id": "personId",
     "activity": "course_name_mode",
     "timestamp": "unitDate",

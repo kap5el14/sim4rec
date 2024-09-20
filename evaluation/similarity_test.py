@@ -60,7 +60,7 @@ def pearson_correlation(folds):
         plt.figure(figsize=(8, 6))
         sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt=".2f", vmin=-1, vmax=1)
         plt.title('Pearson Correlation Between Pairs of Lists')
-        plt.show()
+        plt.savefig("data/pearson.jpg")
     maxima = {
         't_sims': [],
         'th_sims': [],
@@ -92,9 +92,14 @@ def pearson_correlation(folds):
                 res['ed_sims'].append(sims['ed'])
                 res['emd_sims'].append(sims['emd'])
                 res['gm_sims'].append(sims['gm'])
-            for key in res.keys():
-                results = res[key]
-                maxima[key].append(results.index(max(results)) + 1)
+                for k, v in c_sims.items():
+                    if k not in res:
+                        res[k] = []
+                    res[k].append(v)
+            for k, v in res.items():
+                if k not in maxima:
+                    maxima[k] = []
+                maxima[k].append(v.index(max(v)) + 1)
             maxima['identified'].append(len(second_pass(dfs=[peer_df], df=df)[0]))
     plot_correlations(maxima)
 

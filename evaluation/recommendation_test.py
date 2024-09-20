@@ -14,8 +14,5 @@ def recommend(folds: list[Common]):
     print('\n\n')
     scenarios = recommend_scenarios(dfs=sample_peers(df=df), df=df)
     for s in scenarios:
-        print()
-        for r in s:
-            print(r)
-        print(f'\n------------------------------\n')
+        print(s)
 

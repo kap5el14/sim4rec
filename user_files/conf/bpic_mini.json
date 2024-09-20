@@ -1,0 +1,47 @@
+{
+    "case_id": "case:concept:name",
+    "activity": "concept:name",
+    "timestamp": "time:timestamp",
+    "similarity_weights": {
+        "activity": 0.2,
+        "timestamp": 0.05,
+        "numerical_event_attributes": {
+            "FirstWithdrawalAmount": 0.05,
+            "NumberOfTerms": 0.05,
+            "MonthlyCost": 0.05,
+            "CreditScore": 0.05,
+            "OfferedAmount": 0.05
+        },
+        "categorical_event_attributes": {
+            "Accepted": 0.1,
+            "Selected": 0.1,
+            "lifecycle:transition": 0.05
+        },
+        "trace_length": 0.05,
+        "numerical_trace_attributes": {
+            "case:RequestedAmount": 0.05
+        },
+        "categorical_trace_attributes": {
+            "case:LoanGoal": 0.05,
+            "case:ApplicationType": 0.05,
+            "org:resource": 0.05
+        }
+    },
+    "output_attributes": {
+        "numerical": [
+            "FirstWithdrawalAmount",
+            "NumberOfTerms",
+            "MonthlyCost",
+            "OfferedAmount"
+        ],
+        "categorical": [
+            "lifecycle:transition",
+            "org:resource",
+            "Accepted"
+        ],
+        "timestamp": [],
+        "activities": [
+            "O_Create Offer"
+        ]
+    }
+}
