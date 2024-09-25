@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.manifold import MDS
 from sklearn.cluster import AgglomerativeClustering
+import hdbscan
 import random
 import dill
 import heapq
@@ -148,7 +149,7 @@ class Common:
     conf: Configuration = field(init=True, default=None)
     train_df: pd.DataFrame = field(init=True, default=None)
     test_df: pd.DataFrame = field(init=True, default=None)
-    preprocess: Callable[[pd.DataFrame, bool], pd.DataFrame] = field(init=False, default=None)
+    preprocess: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
     instance: 'Common' = None
 
     @classmethod
@@ -165,8 +166,8 @@ class Common:
                 for attr in numerical_event_attributes:
                     df[f'{attr}{CUMSUM}'] = grouped[attr].transform(lambda x: x.expanding().sum()).apply(lambda y: y if y is not None and abs(y) > THRESHOLD else 0)
                     df[f'{attr}{CUMAVG}'] = grouped[attr].transform(lambda x: x.expanding().mean()).apply(lambda y: y if y is not None and abs(y) > THRESHOLD else 0)
-                    df[f'{attr}{MW_SUM}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).sum()).apply(lambda y: y if y is not None and abs(y) > THRESHOLD else 0)
-                    df[f'{attr}{MW_AVG}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).mean()).apply(lambda y: y if y is not None and abs(y) > THRESHOLD else 0)
+                    df[f'{attr}{MW_SUM}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).apply(lambda y: y[~pd.isnull(y)].sum() if not pd.isnull(y).all() else 0)).apply(lambda y: y if abs(y) > THRESHOLD else 0)
+                    df[f'{attr}{MW_AVG}'] = grouped[attr].transform(lambda x: x.rolling(WINDOW_SIZE, min_periods=1).apply(lambda y: y[~pd.isnull(y)].mean() if not pd.isnull(y).all() else 0)).apply(lambda y: y if abs(y) > THRESHOLD else 0)
                 if pd.api.types.is_datetime64tz_dtype(df[self.conf.event_log_specs.timestamp]):
                     unix_epoch = pd.Timestamp("1970-01-01", tz='UTC')
                 else:

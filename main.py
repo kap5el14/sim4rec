@@ -2,7 +2,7 @@ from util.common import *
 import sys
 from pandas.errors import SettingWithCopyWarning
 from evaluation import *
-from view import *
+from algo.pipeline import recommendation_pipeline
 
 warnings.filterwarnings('ignore', category=UserWarning, module='pandas')
 warnings.filterwarnings('ignore', category=UserWarning, module='numpy')
@@ -42,5 +42,22 @@ if EVALUATION:
     evaluate(folds)
 else:
     Common.set_instance(folds[0])
-    start_endpoint()
+    while True:
+        user_input = input("Provide the name of the CSV file containing your trace or type 'q' to quit:\n")
+        if user_input.lower() == 'q':
+            print("User exited the program.")
+            break
+        else:
+            try:
+                df = pd.read_csv(f'user_files/traces/{NAME}/{user_input}.csv')
+            except Exception as e:
+                print(e)
+            else:
+                print("You provided the following dataframe:")
+                print(df)
+                scenarios = recommendation_pipeline(df=df)
+                for s in scenarios:
+                    print(s)
+                print("\nJSON has been copied to clipboard.")
+                
         

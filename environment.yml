@@ -12,4 +12,6 @@ dependencies:
   - tqdm
   - scipy
   - dill
+  - hdbscan
+  - pyperclip
   - pip
