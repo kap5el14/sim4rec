@@ -6,7 +6,7 @@ def first_pass(sample_size=300) -> list[pd.DataFrame]:
     case_ids = common.train_df[common.conf.event_log_specs.case_id].unique()
     return [common.train_df[common.train_df[common.conf.event_log_specs.case_id] == case_id] for case_id in random.sample(list(case_ids), min(sample_size, len(case_ids)))]
 
-def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20, log=False) -> list[pd.DataFrame]:
+def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=40, log=False) -> list[pd.DataFrame]:
     best_dfs: list[tuple[float, pd.DataFrame]] = []
     if log:
         log_results = []
@@ -52,7 +52,7 @@ def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20, log=F
         return result, log_results
     return result
 
-def third_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=10) -> list[tuple[float, pd.DataFrame]]:
+def third_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20) -> list[tuple[float, pd.DataFrame]]:
     best_dfs: list[tuple[float, pd.DataFrame]] = []
     for peer_df in tqdm.tqdm(dfs, desc='Third Pass: Processing Peer DataFrames'):
         sim = similarity_between_traces(df, peer_df)

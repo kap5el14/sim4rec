@@ -1,7 +1,8 @@
 from util.common import *
 from algo.sampling import sample_peers
-from algo.recommendation import recommend_scenarios, Scenario
+from algo.recommendation import make_recommendations, RecommendationPackage
 import pyperclip
+from json2html import *
 
 class PreprocessingException(Exception):
     def __init__(self, message):
@@ -13,14 +14,18 @@ class SamplingException(Exception):
 
 class RecommendationException(Exception):
     def __init__(self, message):
-        super().__init__(f"Couldn't recommend scenarios due to the following exception:\n{message}")
+        super().__init__(f"Couldn't compute recommendations due to the following exception:\n{message}")
+
+class VisualizationException(Exception):
+    def __init__(self, message):
+        super().__init__(f"Couldn't visualize recommendations due to the following exception:\n{message}")
 
 def recommendation_pipeline(df: pd.DataFrame):
     common = Common.instance
     try:
         df.columns = df.columns.str.strip()
         df[common.conf.event_log_specs.timestamp] = pd.to_datetime(df[common.conf.event_log_specs.timestamp], format='mixed')
-        df = common.preprocess(df=df)
+        df, _ = common.preprocess(df=df)
     except Exception as e:
         raise PreprocessingException(str(e))
     try:
@@ -28,9 +33,15 @@ def recommendation_pipeline(df: pd.DataFrame):
     except Exception as e:
         raise SamplingException(str(e))
     try:
-        scenarios = recommend_scenarios(dfs=peers, df=df)
-        json_output = Scenario.to_json(scenarios=scenarios)
+        recommendation_package = make_recommendations(dfs=peers, df=df)
+        json_output = recommendation_package.to_json()
         pyperclip.copy(json_output)
     except Exception as e:
         raise RecommendationException(str(e))
-    return scenarios
+    try:
+        html_content = json2html.convert(json=json_output)
+        with open("output.html", "w") as file:
+            file.write(html_content)
+    except Exception as e:
+        raise VisualizationException(str(e))
+    return recommendation_package

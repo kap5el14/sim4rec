@@ -55,9 +55,8 @@ else:
             else:
                 print("You provided the following dataframe:")
                 print(df)
-                scenarios = recommendation_pipeline(df=df)
-                for s in scenarios:
-                    print(s)
+                recommendation_package = recommendation_pipeline(df=df)
+                print(recommendation_package)
                 print("\nJSON has been copied to clipboard.")
                 
         

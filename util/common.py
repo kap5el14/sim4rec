@@ -84,7 +84,7 @@ class Configuration:
     df: pd.DataFrame = field(init=False, default=None)
     similarity_weights: SimilarityWeights = field(init=False, default=None)
     performance_weights: PerformanceWeights = field(init=False, default=None)
-    custom_performance_function: Callable[[pd.DataFrame, pd.DataFrame], float] = field(init=False, default=None)
+    custom_performance_function: Callable[[pd.DataFrame, pd.DataFrame, pd.Series], float] = field(init=False, default=None)
     output_format: OutputFormat = field(init=False, default=None)
     def __init__(self, name):
         self.name = name
@@ -149,7 +149,11 @@ class Common:
     conf: Configuration = field(init=True, default=None)
     train_df: pd.DataFrame = field(init=True, default=None)
     test_df: pd.DataFrame = field(init=True, default=None)
-    preprocess: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
+    future_train_df: pd.DataFrame = field(init=False, default=None)
+    future_test_df: pd.DataFrame = field(init=False, default=None)
+    add_attributes: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
+    normalize: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
+    future_normalize: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
     instance: 'Common' = None
 
     @classmethod
@@ -160,6 +164,8 @@ class Common:
         def create_add_attributes():
             numerical_event_attributes = set(self.conf.similarity_weights.numerical_event_attributes.keys()).union(self.conf.performance_weights.numerical_event_attributes.keys())
             def add_attributes(df: pd.DataFrame) -> pd.DataFrame:
+                if df is None:
+                    return
                 grouped = df.groupby(self.conf.event_log_specs.case_id)
                 THRESHOLD = 1e-10
                 df[INDEX] = df.groupby(self.conf.event_log_specs.case_id).cumcount()
@@ -189,7 +195,7 @@ class Common:
                 df[ACTIVITIES_STD] = grouped[ACTIVITY_OCCURRENCE].transform(lambda x: x.expanding().std().fillna(0))
                 return df
             return add_attributes
-        def create_normalizer():
+        def create_normalizer(base_df):
             def create_normalizer_with_percentiles(attr, perc_values):
                 def normalize(row):
                     if pd.isna(row[attr]):
@@ -213,11 +219,11 @@ class Common:
                     return row
                 return normalize
             def create_activity_occurrences_normalizer():
-                unique_activities = self.train_df[self.conf.event_log_specs.activity].unique()
+                unique_activities = base_df[self.conf.event_log_specs.activity].unique()
                 normalizers = {}
                 for activity in unique_activities:
-                    activity_mask = self.train_df[self.conf.event_log_specs.activity] == activity
-                    activity_data = self.train_df.loc[activity_mask, ACTIVITY_OCCURRENCE]
+                    activity_mask = base_df[self.conf.event_log_specs.activity] == activity
+                    activity_data = base_df.loc[activity_mask, ACTIVITY_OCCURRENCE]
                     perc_values = np.percentile(activity_data, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]) 
                     normalizers[activity] = create_normalizer_with_percentiles(ACTIVITY_OCCURRENCE, perc_values)
                 def normalize(row):
@@ -227,8 +233,8 @@ class Common:
                     return row
                 return normalize
             def create_timestamp_normalizer(attr):
-                min_val = self.train_df[attr].min()
-                max_val = self.train_df[attr].max()
+                min_val = base_df[attr].min()
+                max_val = base_df[attr].max()
                 def normalize(row):
                     if max_val - min_val == 0:
                         row[attr] = 0.5
@@ -245,16 +251,18 @@ class Common:
             attribute_normalizers = {}
             numerical_event_attributes = set(self.conf.similarity_weights.numerical_event_attributes.keys()).union(self.conf.performance_weights.numerical_event_attributes.keys())
             for attr in [TIME_FROM_TRACE_START, TIME_FROM_PREVIOUS_EVENT, INDEX, UNIQUE_ACTIVITIES, ACTIVITIES_MEAN, ACTIVITIES_STD] + list(itertools.chain.from_iterable([[attr, f'{attr}{CUMSUM}', f'{attr}{CUMAVG}', f'{attr}{MW_SUM}', f'{attr}{MW_AVG}'] for attr in numerical_event_attributes])):
-                perc_values = np.nanpercentile(self.train_df[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+                perc_values = np.nanpercentile(base_df[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
                 attribute_normalizers[attr] = create_normalizer_with_percentiles(attr, perc_values)
             numerical_trace_attributes = set(self.conf.similarity_weights.numerical_trace_attributes.keys()).union(self.conf.performance_weights.numerical_trace_attributes.keys())
             for attr in numerical_trace_attributes:
-                perc_values = np.nanpercentile(self.train_df.groupby(self.conf.event_log_specs.case_id).first()[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+                perc_values = np.nanpercentile(base_df.groupby(self.conf.event_log_specs.case_id).first()[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
                 attribute_normalizers[attr] = create_normalizer_with_percentiles(attr, perc_values)
             attribute_normalizers[ACTIVITY_OCCURRENCE] = create_activity_occurrences_normalizer()
             for attr in [TRACE_START, self.conf.event_log_specs.timestamp]:
                 attribute_normalizers[attr] = create_timestamp_normalizer(attr)
             def normalize(df: pd.DataFrame) -> pd.DataFrame:
+                if df is None:
+                    return
                 def normalize_row(row: pd.DataFrame):
                     new_row = row.copy()
                     for attr, normalizer in attribute_normalizers.items():
@@ -262,18 +270,24 @@ class Common:
                     return new_row
                 return df.apply(normalize_row, axis=1)
             return normalize
-        add_attributes = create_add_attributes()
-        self.train_df = add_attributes(self.train_df)
-        normalize = create_normalizer()
-        self.train_df = normalize(self.train_df)
-        def create_preprocessor(add_attributes, normalize):
-            def preprocess(df: pd.DataFrame):
-                if df is None:
-                    return
-                return normalize(add_attributes(df))
-            return preprocess
-        self.preprocess = create_preprocessor(add_attributes, normalize)
-        self.test_df = self.preprocess(self.test_df)
+        self.add_attributes = create_add_attributes()
+        self.train_df = self.add_attributes(self.train_df)
+        self.future_train_df = self.train_df.groupby(self.conf.event_log_specs.case_id).last().reset_index()
+        self.normalize = create_normalizer(self.train_df)
+        self.future_normalize = create_normalizer(self.future_train_df)
+        self.train_df = self.normalize(self.train_df)
+        self.future_train_df = self.future_normalize(self.future_train_df)
+        if self.test_df is not None:
+            self.test_df = self.add_attributes(self.test_df)
+            self.future_test_df = self.future_test_df.groupby(self.conf.event_log_specs.case_id).last().reset_index()
+            self.test_df = self.normalize(self.test_df)
+            self.future_test_df = self.future_normalize(self.future_test_df)
+
+    def preprocess(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
+        df_with_attributes = self.add_attributes(df=df)
+        normalized_df = self.normalize(df=df)
+        normalized_last_row = self.future_normalize(df=df_with_attributes.tail(1)).iloc[0]
+        return normalized_df, normalized_last_row
 
     def serialize(self, path):
         os.makedirs(os.path.dirname(path), exist_ok=True)

@@ -1,5 +1,5 @@
 from util.common import *
-from algo.recommendation import recommend_scenarios
+from algo.recommendation import make_recommendations
 from algo.sampling import sample_peers
 
 def recommend(folds: list[Common]):
@@ -12,7 +12,7 @@ def recommend(folds: list[Common]):
     original_df = common.conf.df.loc[df.index]
     print(original_df[common.conf.output_format.numerical_attributes + common.conf.output_format.categorical_attributes + common.conf.output_format.timestamp_attributes])
     print('\n\n')
-    scenarios = recommend_scenarios(dfs=sample_peers(df=df), df=df)
+    scenarios = make_recommendations(dfs=sample_peers(df=df), df=df)
     for s in scenarios:
         print(s)
 

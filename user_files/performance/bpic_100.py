@@ -1,6 +1,6 @@
 import pandas as pd
 
-def performance(original_df: pd.DataFrame, normalized_df: pd.DataFrame) -> float:
+def performance(original_df: pd.DataFrame, normalized_df: pd.DataFrame, normalized_last_row: pd.Series) -> float:
     activity_col = 'concept:name'
     o_accepted = 'O_Accepted'
     if o_accepted not in original_df[activity_col].values:

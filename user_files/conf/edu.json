@@ -4,13 +4,13 @@
     "timestamp": "unitDate",
     "similarity_weights": {
         "activity": 0.4,
-        "timestamp": 0.2,
+        "timestamp": 0.1,
         "numerical_event_attributes": {
-            "unitEventGrade": 0.15,
+            "unitEventGrade": 0.2,
             "rewardAmount": 0.1
         },
         "categorical_event_attributes": {
-            "relative_semester": 0.05,
+            "relative_semester": 0.1,
             "state": 0.05
         },
         "trace_length": 0.05,
@@ -18,13 +18,15 @@
         "categorical_trace_attributes": {}
     },
     "performance_weights": {
-        "trace_length": 0.2,
-        "trace_duration": 0.2,
+        "trace_length": 0.3,
         "numerical_trace_attributes": {},
         "categorical_trace_attributes": {},
         "numerical_event_attributes": {
-            "unitEventGrade": ["min", "avg", 0.4],
-            "rewardAmount": ["max", "sum", 0.2]
+            "unitEventGrade": [
+                ["min", "avg", 0.25],
+                ["min", "sum", 0.25]
+            ],
+            "rewardAmount": [["max", "sum", 0.2]]
         }
     },
     "output_attributes": {

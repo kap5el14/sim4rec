@@ -6,45 +6,47 @@ def compute_kpi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
     common = Common.instance
     kpi_dict = {}
     kpi_weights = {}
+    normalized_last_row = common.future_train_df[common.future_train_df[common.conf.event_log_specs.case_id] == df[common.conf.event_log_specs.case_id].iloc[0]].iloc[0]
     if common.conf.custom_performance_function:
         original_df = common.conf.df.loc[df.index]
-        custom_performance = common.conf.custom_performance_function(original_df, df)
+        custom_performance = common.conf.custom_performance_function(original_df, df, normalized_last_row)
         kpi_dict['custom'] = custom_performance
         return kpi_dict, custom_performance
     if common.conf.performance_weights.trace_length:
-        kpi_dict[TRACE_LENGTH] = 1 - df[TRACE_LENGTH].iloc[-1]
+        kpi_dict[TRACE_LENGTH] = 1 - normalized_last_row[TRACE_LENGTH]
         kpi_weights[TRACE_LENGTH] = common.conf.performance_weights.trace_length
     if common.conf.performance_weights.trace_duration:
-        kpi_dict[TRACE_DURATION] = 1 - df[TRACE_DURATION].iloc[-1]
+        kpi_dict[TRACE_DURATION] = 1 - normalized_last_row[TRACE_DURATION]
         kpi_weights[TRACE_DURATION] = common.conf.performance_weights.trace_duration
     for k, v in common.conf.performance_weights.numerical_trace_attributes.items():
         if 'min' in v:
-            kpi_dict[k] = 1 - df[k].iloc[-1]
+            kpi_dict[k] = 1 - normalized_last_row[k]
         elif 'max' in v:
-            kpi_dict[k] = df[k].iloc[-1]
+            kpi_dict[k] = normalized_last_row[k]
         else:
             raise ValueError
         kpi_weights[k] = v[1]
     for k, v in common.conf.performance_weights.categorical_trace_attributes.items():
         value = v[0]
         name = f"{k}=={value}"
-        kpi_dict[name] = 1 if df[k] == value else 0
+        kpi_dict[name] = 1 if normalized_last_row[k] == value else 0
         kpi_weights[name] = v[1]
     for k, v in common.conf.performance_weights.numerical_event_attributes.items():
-        if 'sum' in v:
-            t = CUMSUM
-        elif 'avg' in v:
-            t = CUMAVG
-        else:
-            raise ValueError
-        name = f"{k}{t}"
-        if 'min' in v:
-            kpi_dict[name] = 1 - df[name].iloc[-1]
-        elif 'max' in v:
-            kpi_dict[name] = df[name].iloc[-1]
-        else:
-            raise ValueError
-        kpi_weights[name] = v[2]
+        for v2 in v:
+            if 'sum' in v2:
+                t = CUMSUM
+            elif 'avg' in v2:
+                t = CUMAVG
+            else:
+                raise ValueError
+            name = f"{k}{t}"
+            if 'min' in v2:
+                kpi_dict[name] = 1 - normalized_last_row[name]
+            elif 'max' in v2:
+                kpi_dict[name] = normalized_last_row[name]
+            else:
+                raise ValueError
+            kpi_weights[name] = v2[2]
     performance = sum([kpi_dict[k] * kpi_weights[k] for k in kpi_dict.keys()])
     return kpi_dict, performance  
 
@@ -67,16 +69,17 @@ class RecommendationCandidate:
     def generate_candidates(cls, peer_df: pd.DataFrame, df: pd.DataFrame, sim: float):
         common = Common.instance
         complete_peer_df = common.train_df[common.train_df[common.conf.event_log_specs.case_id] == peer_df[common.conf.event_log_specs.case_id].iloc[0]]
+        peer_future_df = complete_peer_df[len(peer_df):]
         last_values = df[[TIME_FROM_TRACE_START, INDEX]].iloc[-1]
-        complete_peer_df_filtered = complete_peer_df[[TIME_FROM_TRACE_START, INDEX]]
-        difference_df = complete_peer_df_filtered - last_values
+        peer_future_df_filtered = peer_future_df[[TIME_FROM_TRACE_START, INDEX]]
+        difference_df = peer_future_df_filtered - last_values
         proximities = 1 - difference_df.abs().mean(axis=1)
         kpi_dict, fp = compute_kpi(complete_peer_df)
         candidates = []
-        for i in range(len(complete_peer_df)):
+        for i in range(len(peer_future_df)):
             acted_on = False
             for j in range(len(df)):
-                row = complete_peer_df.iloc[i]
+                row = peer_future_df.iloc[i]
                 event_sim = similarity_between_events(row, df.iloc[j])
                 if event_sim >= sim:
                     acted_on = True
@@ -93,7 +96,7 @@ class Recommendation:
     peers: set[str] = field(init=False, default=None)
     event: pd.Series = field(init=False, default=None)
     support: float = field(init=False, default=None)
-    peer_performance: float = field(init=False, default=None)
+    kpi: float = field(init=False, default=None)
     kpi_dict: dict[str, float] = field(init=False, default=None)
     proximity: float = field(init=False, default=None)
     similarity: float = field(init=False, default=None)
@@ -106,7 +109,7 @@ class Recommendation:
         return hash(self.id)
     
     def __str__(self) -> str:
-        return f"peers: {self.peers}\nsupport: {self.support}\nsimilarity: {self.similarity}\nproximity: {self.proximity}\nKPI: {self.peer_performance}\nKPI_dict: {self.kpi_dict}\n\n{self.event}\n\n"
+        return f"peers: {self.peers}\nsupport: {self.support}\nsimilarity: {self.similarity}\nproximity: {self.proximity}\nKPI: {self.kpi}\nKPI_dict: {self.kpi_dict}\n\n{self.event}\n\n"
     
     def __dict__(self) -> dict:
         result = {
@@ -114,7 +117,7 @@ class Recommendation:
             "support": self.support,
             "similarity": self.similarity,
             "proximity": self.proximity,
-            "KPI": self.peer_performance,
+            "KPI": self.kpi,
             "component KPIs:": self.kpi_dict,
             "event": {k: str(v) for k, v in self.event.to_dict().items()}
         }
@@ -142,7 +145,7 @@ class Recommendation:
         self.support = len(self.peers) / len(self.all_peers)
         self.similarity = similarity_sum / len(self.cluster)
         self.proximity = proximity_sum / len(self.cluster)
-        self.peer_performance = peer_performance_sum / len(self.cluster)
+        self.kpi = peer_performance_sum / len(self.cluster)
         self.kpi_dict = {k: v / len(self.cluster) for k, v in kpi_sums.items()}
         candidates_df = pd.DataFrame([common.conf.df.loc[c.row.name] for c in self.cluster])
         numerical_cols = candidates_df[common.conf.output_format.numerical_attributes]
@@ -171,10 +174,11 @@ class Recommendation:
         self.normalized_event = pd.concat(attributes).dropna()
     
     def score(self):
-        return self.peer_performance + (self.support + self.similarity + self.proximity) / 3
+        return self.kpi * self.support
+    
     def dominates(self, rec: 'Recommendation'):
-        not_worse = self.support >= rec.support and self.peer_performance >= rec.peer_performance and self.proximity >= rec.proximity and self.similarity >= rec.similarity
-        better = self.support > rec.support or self.peer_performance > rec.peer_performance or self.proximity > rec.proximity or self.similarity > rec.similarity
+        not_worse = self.support >= rec.support and self.kpi >= rec.kpi and self.proximity >= rec.proximity and self.similarity >= rec.similarity
+        better = self.support > rec.support or self.kpi > rec.kpi or self.proximity > rec.proximity or self.similarity > rec.similarity
         return not_worse and better
 
     @classmethod
@@ -189,7 +193,7 @@ class Recommendation:
             for j in range(i + 1, n):
                 if i != j:
                     distance_matrix[j, i] = distance_matrix[i, j] = 1 - similarity_between_events(candidates[i].row, candidates[j].row)
-        clustering = hdbscan.HDBSCAN(min_cluster_size=2)
+        clustering = hdbscan.HDBSCAN(min_cluster_size=2, metric='precomputed')
         cluster_labels = clustering.fit_predict(distance_matrix)
         clusters = {}
         no_labels = len(set(cluster_labels))
@@ -204,6 +208,17 @@ class Recommendation:
         recommendations: list[Recommendation] = []
         recommendations = [Recommendation(cluster=cluster, all_peers=all_peers, id=rec_index) for rec_index, cluster in enumerate(clusters.values())]
         recommendations = list(filter(lambda rec: rec.event[common.conf.event_log_specs.activity] in common.conf.output_format.activities, recommendations))
+        means = []
+        for rec in recommendations:
+            sims = []
+            for i, can1 in enumerate(rec.cluster):
+                for j, can2 in enumerate(rec.cluster):
+                    if j > i:
+                        sims.append(similarity_between_events(can1.row, can2.row))
+            means.append(np.mean(sims))
+        median = np.median([m for m in means if not np.isnan(m)])
+        mask = [np.isnan(mean) or mean >= median for mean in means]
+        recommendations = [rec for rec, m in zip(recommendations, mask) if m]
         pareto: set[Recommendation] = set()
         for rec1 in recommendations:
             dominated = set()
@@ -220,88 +235,49 @@ class Recommendation:
         return list(pareto)
     
 @dataclass
-class Scenario:
-    df: pd.DataFrame
-    recommendations: list[Recommendation]
-    kpi: float = field(init=False, default=None)
-    confidence: float = field(init=False, default=None)
+class RecommendationPackage:
+    highest_kpi_rec: Recommendation = field(init=False, default=None)
+    highest_support_rec: Recommendation = field(init=False, default=None)
+    optimal_rec: Recommendation = field(init=False, default=None)
 
-    def __post_init__(self):
-        self.recommendations = list(sorted(self.recommendations, key=lambda x: x.score(), reverse=True))
-        combined_df = pd.concat([self.df, pd.DataFrame([r.normalized_event for r in self.recommendations])], ignore_index=False)
-        _, old_performance = compute_kpi(self.df)
-        _, new_performance = compute_kpi(combined_df)
-        performance_improvement = 0.5 + (new_performance - old_performance) / 2
-        self.kpi = (performance_improvement + np.mean([r.peer_performance for r in self.recommendations])) / 2
-        self.confidence = (np.mean([r.support for r in self.recommendations]) + np.mean([r.proximity for r in self.recommendations]) + np.mean([r.similarity for r in self.recommendations])) / 3
-    
-    def score(self):
-        return self.kpi * self.confidence
+    def __init__(self, recommendations: list[Recommendation]):
+        max_kpi = max([rec.kpi for rec in recommendations])
+        self.highest_kpi_rec = next((rec for rec in recommendations if rec.kpi == max_kpi), None)
+        max_support = max([rec.support for rec in recommendations])
+        self.highest_support_rec = next((rec for rec in recommendations if rec.support == max_support), None)
+        max_score = max([rec.score() for rec in recommendations])
+        self.optimal_rec = next((rec for rec in recommendations if rec.score() == max_score), None)
+
+    def __dict__(self):
+        d = {
+            self.highest_kpi_rec: [],
+            self.highest_support_rec: [],
+            self.optimal_rec: []
+        }
+        d[self.highest_kpi_rec].append('highest KPI')
+        d[self.highest_support_rec].append('highest support')
+        d[self.optimal_rec].append('optimal')
+        result = {}
+        for k, v in d.items():
+            name = ', '.join(v)
+            result[name] = k.__dict__()
+        return result
     
     def __str__(self):
-        res = f'--------------------------------------\n'
-        res += f"KPI: {self.kpi}\n"
-        res += f"Confidence: {self.confidence}\n\n"
-        for r in self.recommendations:
-            res += f"{str(r)}"
-        return res
-    
-    def __dict__(self) -> dict:
-        result = {
-            "KPI": self.kpi,
-            "Confidence": self.confidence,
-            "Recommendations": []
-        }
-        for rec in self.recommendations:
-            result['Recommendations'].append(rec.__dict__())
-        return result
+        return str(self.__dict__())
 
-    
-    @classmethod
-    def generate_scenarios(cls, recommendations: list['Recommendation'], df: pd.DataFrame) -> list['Scenario']:
-        n = len(recommendations)
-        if n == 1:
-            return [Scenario(df=df, recommendations=recommendations)]
-        distance_matrix = np.zeros((n, n))
-        for i in range(n):
-            for j in range(i + 1, n):
-                if i != j:
-                    set1 = recommendations[i].peers
-                    set2 = recommendations[j].peers
-                    intersection = len(set1.intersection(set2))
-                    union = len(set1.union(set2))
-                    distance_matrix[j, i] = distance_matrix[i, j] = 1 - (intersection / union if union != 0 else 0)
-        clustering = hdbscan.HDBSCAN(min_cluster_size=2)
-        cluster_labels = clustering.fit_predict(distance_matrix)
-        clusters = {}
-        no_labels = len(set(cluster_labels))
-        for idx, label in enumerate(cluster_labels):
-            if label == -1:
-                clusters[no_labels] = [recommendations[idx]]
-                no_labels += 1
-                continue
-            if label not in clusters:
-                clusters[label] = []
-            clusters[label].append(recommendations[idx])
-        scenarios = [Scenario(df=df, recommendations=cluster) for cluster in clusters.values()]
-        return list(sorted(scenarios, key=lambda x: x.score(), reverse=True))
+    def to_json(self):
+        return json.dumps(self.__dict__())
 
-    @classmethod
-    def to_json(cls, scenarios: list['Scenario']):
-        result = []
-        for s in scenarios:
-            result.append(s.__dict__())
-        return json.dumps(result)
-
-def recommend_scenarios(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame, sample_size=3) -> list[Scenario]:
+def make_recommendations(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame) -> RecommendationPackage:
     n = len(dfs)
     candidates_map = {}
+    average_sim = np.mean([sim for sim, df in dfs])
     for i in range(n):
         df1 = dfs[i][1]
-        candidates_map[i] = RecommendationCandidate.generate_candidates(peer_df=df1, df=df, sim=dfs[i][0])
+        candidates_map[i] = RecommendationCandidate.generate_candidates(peer_df=df1, df=df, sim=average_sim)
     candidates = []
     for _, vals in candidates_map.items():
         candidates += vals
     recommendations = Recommendation.generate_recommendations(candidates=candidates)
-    scenarios = Scenario.generate_scenarios(recommendations=recommendations, df=df)
-    return scenarios[:min(sample_size, len(scenarios))]
+    return RecommendationPackage(recommendations=recommendations)
