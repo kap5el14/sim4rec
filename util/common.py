@@ -1,3 +1,4 @@
+import math
 from util.constants import *
 from dataclasses import dataclass, field
 import pandas as pd
@@ -80,12 +81,28 @@ class OutputFormat:
         self.timestamp_attributes = list(set(self.timestamp_attributes))
 
 @dataclass
+class EvaluationDatasetsFormat:
+    training_size: int
+    testing_size: int
+    training_periods: list
+
+    def __post_init__(self):
+        new_training_periods = []
+        for period in self.training_periods:
+            start = pd.to_datetime(period['start'])
+            end = pd.to_datetime(period['end'])
+            new_training_periods.append((start, end))
+        self.training_periods = new_training_periods
+
+
+@dataclass
 class Configuration:
     df: pd.DataFrame = field(init=False, default=None)
     similarity_weights: SimilarityWeights = field(init=False, default=None)
     performance_weights: PerformanceWeights = field(init=False, default=None)
     custom_performance_function: Callable[[pd.DataFrame, pd.DataFrame, pd.Series], float] = field(init=False, default=None)
     output_format: OutputFormat = field(init=False, default=None)
+    evaluation_datasets_format: EvaluationDatasetsFormat = field(init=False, default=None)
     def __init__(self, name):
         self.name = name
         with open(os.path.join('user_files', 'conf', f"{name}.json"), 'r') as conf_file:
@@ -136,9 +153,15 @@ class Configuration:
             self.output_format = OutputFormat(
                 numerical_attributes=try_read(['output_attributes', 'numerical'], default=[]),
                 categorical_attributes=try_read(['output_attributes', 'categorical'], default=[]) + [self.event_log_specs.activity],
-                timestamp_attributes=try_read(['output_attributes', 'timestamp'], default=[]) + [self.event_log_specs.timestamp],
+                timestamp_attributes=try_read(['output_attributes', 'timestamp'], default=[]),
                 activities=try_read(['output_attributes', 'activities'], default=list(self.df[self.event_log_specs.activity].unique()))
             )
+            self.evaluation_datasets_format = EvaluationDatasetsFormat(
+                training_size=try_read(['evaluation', 'training_size'], default=math.inf),
+                testing_size=try_read(['evaluation', 'testing_size'], default=math.inf),
+                training_periods=try_read(['evaluation', 'training_periods'], default=[])
+            )
+
     @classmethod
     def get_directory(cls, name: str, evaluation: bool):
         suffix = 'eval' if evaluation else 'normal'
@@ -279,7 +302,7 @@ class Common:
         self.future_train_df = self.future_normalize(self.future_train_df)
         if self.test_df is not None:
             self.test_df = self.add_attributes(self.test_df)
-            self.future_test_df = self.future_test_df.groupby(self.conf.event_log_specs.case_id).last().reset_index()
+            self.future_test_df = self.test_df.groupby(self.conf.event_log_specs.case_id).last().reset_index()
             self.test_df = self.normalize(self.test_df)
             self.future_test_df = self.future_normalize(self.future_test_df)
 

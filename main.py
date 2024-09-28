@@ -14,34 +14,24 @@ NAME = next((arg for arg in sys.argv[1:] if arg not in ['-e', '-n']), None)
 def get_pkl_files(evaluation=EVALUATION):
     return glob.glob(os.path.join(Configuration.get_directory(NAME, evaluation), '*.pkl'))
 if NEW:
-    for evaluation in [True, False]:
-        for pkl_file in get_pkl_files(evaluation):
-            os.remove(pkl_file)
-folds = []
+    for pkl_file in get_pkl_files(EVALUATION):
+        os.remove(pkl_file)
+commons = []
 if not NEW:
     for pkl_file in get_pkl_files():
-        folds.append(Common.deserialize(pkl_file))
+        commons.append(Common.deserialize(pkl_file))
 else:
     conf = Configuration(NAME)
     if EVALUATION:
-        k = 5
-        case_ids = conf.df[conf.event_log_specs.case_id].unique()
-        kf = KFold(n_splits=k, shuffle=True, random_state=42)
-        for train_index, test_index in kf.split(case_ids):
-            train_case_ids = case_ids[train_index]
-            test_case_ids = case_ids[test_index]
-            train_df = conf.df[conf.df[conf.event_log_specs.case_id].isin(train_case_ids)]
-            test_df = conf.df[conf.df[conf.event_log_specs.case_id].isin(test_case_ids)]
-            fold = Common(conf=conf, train_df=train_df, test_df=test_df)
-            folds.append(fold)
+        commons = generate_evaluation_datasets(conf)
     else:
-        folds.append(Common(conf=conf, train_df=conf.df))
-    for i, fold in enumerate(folds):
+        commons.append(Common(conf=conf, train_df=conf.df))
+    for i, fold in enumerate(commons):
         fold.serialize(os.path.join(Configuration.get_directory(NAME, EVALUATION), f'{i}.pkl'))
 if EVALUATION:
-    evaluate(folds)
+    evaluate(commons)
 else:
-    Common.set_instance(folds[0])
+    Common.set_instance(commons[0])
     while True:
         user_input = input("Provide the name of the CSV file containing your trace or type 'q' to quit:\n")
         if user_input.lower() == 'q':
