@@ -24,6 +24,8 @@ import json
 import glob
 import importlib.util
 import os
+from datetime import timedelta, datetime
+import copy
 
 
 @dataclass
@@ -177,6 +179,7 @@ class Common:
     add_attributes: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
     normalize: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
     future_normalize: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
+    training_period: tuple[datetime, datetime] = field(init=False, default=None)
     instance: 'Common' = None
 
     @classmethod
@@ -293,6 +296,11 @@ class Common:
                     return new_row
                 return df.apply(normalize_row, axis=1)
             return normalize
+        self.conf = copy.copy(self.conf)
+        case_ids = list(self.train_df[self.conf.event_log_specs.case_id])
+        if self.test_df is not None:
+            case_ids += list(self.test_df[self.conf.event_log_specs.case_id])
+        self.conf.df = self.conf.df[self.conf.df[self.conf.event_log_specs.case_id].isin(case_ids)]
         self.add_attributes = create_add_attributes()
         self.train_df = self.add_attributes(self.train_df)
         self.future_train_df = self.train_df.groupby(self.conf.event_log_specs.case_id).last().reset_index()

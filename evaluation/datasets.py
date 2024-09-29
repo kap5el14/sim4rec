@@ -1,5 +1,4 @@
 from util.common import *
-from datetime import timedelta, datetime
 
 def generate_evaluation_datasets(conf: Configuration) -> list[Common]:
     grouped = conf.df.groupby(conf.event_log_specs.case_id)[conf.event_log_specs.timestamp]
