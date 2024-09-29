@@ -55,7 +55,6 @@ def compute_kpi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
 class RecommendationCandidate:
     row: pd.Series
     proximity: float
-    similarity: float
     peer_performance: float
     kpi_dict: dict[str, float]
 
@@ -85,7 +84,7 @@ class RecommendationCandidate:
                     acted_on = True
                     break
             if not acted_on:
-                candidates.append(RecommendationCandidate(row=row, proximity=proximities.iloc[i], similarity=sim, peer_performance=fp, kpi_dict=kpi_dict))
+                candidates.append(RecommendationCandidate(row=row, proximity=proximities.iloc[i], peer_performance=fp, kpi_dict=kpi_dict))
         return candidates
 
 @dataclass
@@ -99,7 +98,6 @@ class Recommendation:
     kpi: float = field(init=False, default=None)
     kpi_dict: dict[str, float] = field(init=False, default=None)
     proximity: float = field(init=False, default=None)
-    similarity: float = field(init=False, default=None)
     normalized_event: pd.Series = field(init=False, default=None)
 
     def __eq__(self, value: 'Recommendation') -> bool:
@@ -109,13 +107,12 @@ class Recommendation:
         return hash(self.id)
     
     def __str__(self) -> str:
-        return f"peers: {self.peers}\nsupport: {self.support}\nsimilarity: {self.similarity}\nproximity: {self.proximity}\nKPI: {self.kpi}\nKPI_dict: {self.kpi_dict}\n\n{self.event}\n\n"
+        return f"peers: {self.peers}\nsupport: {self.support}\nproximity: {self.proximity}\nKPI: {self.kpi}\nKPI_dict: {self.kpi_dict}\n\n{self.event}\n\n"
     
     def __dict__(self) -> dict:
         result = {
             "peers": list(self.peers),
             "support": self.support,
-            "similarity": self.similarity,
             "proximity": self.proximity,
             "KPI": self.kpi,
             "component KPIs:": self.kpi_dict,
@@ -127,14 +124,12 @@ class Recommendation:
     def __post_init__(self):
         common = Common.instance
         self.peers = set()
-        similarity_sum = 0
         proximity_sum = 0
         peer_performance_sum = 0
         kpi_sums = {}
         for candidate in self.cluster:
             case_id = candidate.row[common.conf.event_log_specs.case_id]
             self.peers.add(case_id)
-            similarity_sum += candidate.similarity
             proximity_sum += candidate.proximity
             peer_performance_sum += candidate.peer_performance
             for k, v in candidate.kpi_dict.items():
@@ -143,7 +138,6 @@ class Recommendation:
                 else:
                     kpi_sums[k] = v
         self.support = len(self.peers) / len(self.all_peers)
-        self.similarity = similarity_sum / len(self.cluster)
         self.proximity = proximity_sum / len(self.cluster)
         self.kpi = peer_performance_sum / len(self.cluster)
         self.kpi_dict = {k: v / len(self.cluster) for k, v in kpi_sums.items()}
@@ -174,11 +168,11 @@ class Recommendation:
         self.normalized_event = pd.concat(attributes).dropna()
     
     def score(self):
-        return self.kpi * self.support
+        return self.kpi * self.support * self.proximity
     
     def dominates(self, rec: 'Recommendation'):
-        not_worse = self.support >= rec.support and self.kpi >= rec.kpi and self.proximity >= rec.proximity and self.similarity >= rec.similarity
-        better = self.support > rec.support or self.kpi > rec.kpi or self.proximity > rec.proximity or self.similarity > rec.similarity
+        not_worse = self.support >= rec.support and self.kpi >= rec.kpi and self.proximity >= rec.proximity
+        better = self.support > rec.support or self.kpi > rec.kpi or self.proximity > rec.proximity
         return not_worse and better
 
     @classmethod
@@ -237,25 +231,20 @@ class Recommendation:
 @dataclass
 class RecommendationPackage:
     highest_kpi_rec: Recommendation = field(init=False, default=None)
-    highest_support_rec: Recommendation = field(init=False, default=None)
     optimal_rec: Recommendation = field(init=False, default=None)
 
     def __init__(self, recommendations: list[Recommendation]):
         max_kpi = max([rec.kpi for rec in recommendations])
         self.highest_kpi_rec = next((rec for rec in recommendations if rec.kpi == max_kpi), None)
-        max_support = max([rec.support for rec in recommendations])
-        self.highest_support_rec = next((rec for rec in recommendations if rec.support == max_support), None)
         max_score = max([rec.score() for rec in recommendations])
         self.optimal_rec = next((rec for rec in recommendations if rec.score() == max_score), None)
 
     def __dict__(self):
         d = {
             self.highest_kpi_rec: [],
-            self.highest_support_rec: [],
             self.optimal_rec: []
         }
         d[self.highest_kpi_rec].append('highest KPI')
-        d[self.highest_support_rec].append('highest support')
         d[self.optimal_rec].append('optimal')
         result = {}
         for k, v in d.items():
