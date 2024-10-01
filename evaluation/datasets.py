@@ -20,6 +20,6 @@ def generate_evaluation_datasets(conf: Configuration) -> list[Common]:
         test_case_ids = random.sample(list(test_case_ids), min(conf.evaluation_datasets_format.testing_size, len(test_case_ids)))
         test_df = conf.df[conf.df[conf.event_log_specs.case_id].isin(test_case_ids)]
         print(f"{len(test_case_ids)} traces in testing set {i}.")
-        common = Common(conf=conf, train_df=train_df, test_df=test_df)
+        common = Common(conf=conf, train_df=train_df, test_df=test_df, training_period=training_period)
         commons.append(common)
     return commons

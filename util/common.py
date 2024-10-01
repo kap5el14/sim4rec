@@ -12,7 +12,7 @@ import hdbscan
 import random
 import dill
 import heapq
-from collections import deque
+from collections import deque, Counter
 from sklearn.model_selection import KFold
 import pprint
 import tqdm
@@ -26,6 +26,7 @@ import importlib.util
 import os
 from datetime import timedelta, datetime
 import copy
+from scipy import stats
 
 
 @dataclass
@@ -47,10 +48,10 @@ class SimilarityWeights:
     event: float = field(init=False, default=None)
 
     def __post_init__(self):
-        self.trace = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_trace_attributes.values()) + list(self.categorical_trace_attributes.values())) + sum(list(self.numerical_event_attributes.values())) / 2 + self.trace_length
-        self.event = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_event_attributes.values())) / 2 + sum(list(self.categorical_event_attributes.values()))
-        if not (0.95 <= self.trace + self.event <= 1.05):
-            raise ValueError("Similarity weights don't sum up to 1!")
+        self.trace = self.activity * 0.25 + self.timestamp * 0.25 + sum(list(self.numerical_trace_attributes.values()) + list(self.categorical_trace_attributes.values())) + sum(list(self.numerical_event_attributes.values())) * 0.25 + self.trace_length + sum(list(self.categorical_event_attributes.values())) * 0.25
+        self.event = self.activity * 0.75 + self.timestamp * 0.75 + sum(list(self.numerical_event_attributes.values())) * 0.75 + sum(list(self.categorical_event_attributes.values())) * 0.75
+        if not (0.99 <= self.trace + self.event <= 1.01):
+            raise ValueError(f"Similarity weights sum up to {self.trace + self.event:.2f} != 1!")
 
 @dataclass
 class PerformanceWeights:
@@ -107,7 +108,7 @@ class Configuration:
     evaluation_datasets_format: EvaluationDatasetsFormat = field(init=False, default=None)
     def __init__(self, name):
         self.name = name
-        with open(os.path.join('user_files', 'conf', f"{name}.json"), 'r') as conf_file:
+        with open(os.path.join('user_files', 'confs', f"{name}.json"), 'r') as conf_file:
             config = json.load(conf_file)
             def try_read(strings: list[str], default=None):
                 try:
@@ -122,7 +123,7 @@ class Configuration:
                 activity=config['activity'],
                 timestamp=config['timestamp']
             )
-            log_path = os.path.join('user_files', 'log', f'{name}.csv')
+            log_path = os.path.join('user_files', 'logs', f'{name}.csv')
             self.df = pd.read_csv(log_path)
             self.df[self.event_log_specs.timestamp] = pd.to_datetime(self.df[self.event_log_specs.timestamp], format='mixed')
             self.df.sort_values(by=[self.event_log_specs.case_id, self.event_log_specs.timestamp], inplace=True)
@@ -174,12 +175,11 @@ class Common:
     conf: Configuration = field(init=True, default=None)
     train_df: pd.DataFrame = field(init=True, default=None)
     test_df: pd.DataFrame = field(init=True, default=None)
-    future_train_df: pd.DataFrame = field(init=False, default=None)
-    future_test_df: pd.DataFrame = field(init=False, default=None)
+    future_df: pd.DataFrame = field(init=False, default=None)
     add_attributes: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
     normalize: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
     future_normalize: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
-    training_period: tuple[datetime, datetime] = field(init=False, default=None)
+    training_period: tuple[datetime, datetime] = field(init=True, default=None)
     instance: 'Common' = None
 
     @classmethod
@@ -301,18 +301,23 @@ class Common:
         if self.test_df is not None:
             case_ids += list(self.test_df[self.conf.event_log_specs.case_id])
         self.conf.df = self.conf.df[self.conf.df[self.conf.event_log_specs.case_id].isin(case_ids)]
+        if self.training_period is None:
+            self.training_period = (self.train_df[self.conf.event_log_specs.timestamp].min(), self.train_df[self.conf.event_log_specs.timestamp].max())
         self.add_attributes = create_add_attributes()
         self.train_df = self.add_attributes(self.train_df)
-        self.future_train_df = self.train_df.groupby(self.conf.event_log_specs.case_id).last().reset_index()
+        future_train_df = self.train_df.groupby(self.conf.event_log_specs.case_id).last().reset_index()
         self.normalize = create_normalizer(self.train_df)
-        self.future_normalize = create_normalizer(self.future_train_df)
+        self.future_normalize = create_normalizer(future_train_df)
         self.train_df = self.normalize(self.train_df)
-        self.future_train_df = self.future_normalize(self.future_train_df)
+        future_train_df = self.future_normalize(future_train_df)
         if self.test_df is not None:
             self.test_df = self.add_attributes(self.test_df)
-            self.future_test_df = self.test_df.groupby(self.conf.event_log_specs.case_id).last().reset_index()
+            future_test_df = self.test_df.groupby(self.conf.event_log_specs.case_id).last().reset_index()
             self.test_df = self.normalize(self.test_df)
-            self.future_test_df = self.future_normalize(self.future_test_df)
+            future_test_df = self.future_normalize(future_test_df)
+            self.future_df = pd.concat([future_train_df, future_test_df])
+        else:
+            self.future_df = future_train_df
 
     def preprocess(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
         df_with_attributes = self.add_attributes(df=df)

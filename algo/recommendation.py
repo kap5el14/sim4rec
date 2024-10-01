@@ -6,7 +6,7 @@ def compute_kpi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
     common = Common.instance
     kpi_dict = {}
     kpi_weights = {}
-    normalized_last_row = common.future_train_df[common.future_train_df[common.conf.event_log_specs.case_id] == df[common.conf.event_log_specs.case_id].iloc[0]].iloc[0]
+    normalized_last_row = common.future_df[common.future_df[common.conf.event_log_specs.case_id] == df[common.conf.event_log_specs.case_id].iloc[0]].iloc[0]
     if common.conf.custom_performance_function:
         original_df = common.conf.df.loc[df.index]
         custom_performance = common.conf.custom_performance_function(original_df, df, normalized_last_row)
@@ -119,6 +119,9 @@ class Recommendation:
             "event": {k: str(v) for k, v in self.event.to_dict().items()}
         }
         return result
+    
+    def to_json(self):
+        return json.dumps(self.__dict__())
 
 
     def __post_init__(self):
@@ -147,7 +150,7 @@ class Recommendation:
         timestamp_cols = candidates_df[common.conf.output_format.timestamp_attributes]
         attributes = []
         if not numerical_cols.empty:
-            attributes.append(numerical_cols.mean())
+            attributes.append(numerical_cols.median())
         if not categorical_cols.empty:
             attributes.append(categorical_cols.mode().iloc[0])
         if not timestamp_cols.empty:
@@ -155,14 +158,14 @@ class Recommendation:
                 unix_epoch = pd.Timestamp("1970-01-01", tz='UTC')
             else:
                 unix_epoch = pd.Timestamp("1970-01-01")
-            attributes.append(timestamp_cols.apply(lambda x: x.mean()).apply(lambda x: unix_epoch + pd.to_timedelta(x, unit='s')))
+            attributes.append(timestamp_cols.apply(lambda x: x.median()).apply(lambda x: unix_epoch + pd.to_timedelta(x, unit='s')))
         self.event = pd.concat(attributes).dropna()
         attributes = []
         candidates_df = pd.DataFrame([common.train_df.loc[c.row.name] for c in self.cluster])
         numerical_cols = candidates_df[common.conf.performance_weights.get_all_numerical_attributes()]
         categorical_cols = candidates_df[list(common.conf.performance_weights.categorical_trace_attributes.keys())]
         if not numerical_cols.empty:
-            attributes.append(numerical_cols.mean())
+            attributes.append(numerical_cols.median())
         if not categorical_cols.empty:
             attributes.append(categorical_cols.mode().iloc[0])
         self.normalized_event = pd.concat(attributes).dropna()
@@ -188,20 +191,23 @@ class Recommendation:
                 if i != j:
                     distance_matrix[j, i] = distance_matrix[i, j] = 1 - similarity_between_events(candidates[i].row, candidates[j].row)
         clustering = hdbscan.HDBSCAN(min_cluster_size=2, metric='precomputed')
-        cluster_labels = clustering.fit_predict(distance_matrix)
-        clusters = {}
-        no_labels = len(set(cluster_labels))
-        for idx, label in enumerate(cluster_labels):
-            if label == -1:
-                clusters[no_labels] = [candidates[idx]]
-                no_labels += 1
-                continue
-            if label not in clusters:
-                clusters[label] = []
-            clusters[label].append(candidates[idx])
-        recommendations: list[Recommendation] = []
-        recommendations = [Recommendation(cluster=cluster, all_peers=all_peers, id=rec_index) for rec_index, cluster in enumerate(clusters.values())]
-        recommendations = list(filter(lambda rec: rec.event[common.conf.event_log_specs.activity] in common.conf.output_format.activities, recommendations))
+        if len(candidates) > 1:
+            cluster_labels = clustering.fit_predict(distance_matrix)
+            clusters = {}
+            no_labels = len(set(cluster_labels))
+            for idx, label in enumerate(cluster_labels):
+                if label == -1:
+                    clusters[no_labels] = [candidates[idx]]
+                    no_labels += 1
+                    continue
+                if label not in clusters:
+                    clusters[label] = []
+                clusters[label].append(candidates[idx])
+            recommendations: list[Recommendation] = []
+            recommendations = [Recommendation(cluster=cluster, all_peers=all_peers, id=rec_index) for rec_index, cluster in enumerate(clusters.values())]
+            recommendations = list(filter(lambda rec: rec.event[common.conf.event_log_specs.activity] in common.conf.output_format.activities, recommendations))
+        else:
+            recommendations = [Recommendation(cluster=candidates, all_peers=all_peers, id=0)]
         means = []
         for rec in recommendations:
             sims = []
@@ -227,38 +233,8 @@ class Recommendation:
             if not flag:
                 pareto.add(rec1)
         return list(pareto)
-    
-@dataclass
-class RecommendationPackage:
-    highest_kpi_rec: Recommendation = field(init=False, default=None)
-    optimal_rec: Recommendation = field(init=False, default=None)
 
-    def __init__(self, recommendations: list[Recommendation]):
-        max_kpi = max([rec.kpi for rec in recommendations])
-        self.highest_kpi_rec = next((rec for rec in recommendations if rec.kpi == max_kpi), None)
-        max_score = max([rec.score() for rec in recommendations])
-        self.optimal_rec = next((rec for rec in recommendations if rec.score() == max_score), None)
-
-    def __dict__(self):
-        d = {
-            self.highest_kpi_rec: [],
-            self.optimal_rec: []
-        }
-        d[self.highest_kpi_rec].append('highest KPI')
-        d[self.optimal_rec].append('optimal')
-        result = {}
-        for k, v in d.items():
-            name = ', '.join(v)
-            result[name] = k.__dict__()
-        return result
-    
-    def __str__(self):
-        return str(self.__dict__())
-
-    def to_json(self):
-        return json.dumps(self.__dict__())
-
-def make_recommendations(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame) -> RecommendationPackage:
+def make_recommendation(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame) -> Recommendation:
     n = len(dfs)
     candidates_map = {}
     average_sim = np.mean([sim for sim, df in dfs])
@@ -268,5 +244,7 @@ def make_recommendations(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame
     candidates = []
     for _, vals in candidates_map.items():
         candidates += vals
-    recommendations = Recommendation.generate_recommendations(candidates=candidates)
-    return RecommendationPackage(recommendations=recommendations)
+    if candidates:
+        recommendations = Recommendation.generate_recommendations(candidates=candidates)
+        if recommendations:
+            return recommendations[0]

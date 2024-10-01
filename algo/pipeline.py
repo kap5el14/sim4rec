@@ -1,6 +1,6 @@
 from util.common import *
 from algo.sampling import sample_peers
-from algo.recommendation import make_recommendations, RecommendationPackage
+from algo.recommendation import make_recommendation
 import pyperclip
 from json2html import *
 
@@ -20,7 +20,7 @@ class VisualizationException(Exception):
     def __init__(self, message):
         super().__init__(f"Couldn't visualize recommendations due to the following exception:\n{message}")
 
-def recommendation_pipeline(df: pd.DataFrame):
+def recommendation_pipeline(df: pd.DataFrame, interactive=True):
     common = Common.instance
     try:
         df.columns = df.columns.str.strip()
@@ -33,15 +33,19 @@ def recommendation_pipeline(df: pd.DataFrame):
     except Exception as e:
         raise SamplingException(str(e))
     try:
-        recommendation_package = make_recommendations(dfs=peers, df=df)
-        json_output = recommendation_package.to_json()
-        pyperclip.copy(json_output)
+        recommendation = make_recommendation(dfs=peers, df=df)
+        if not recommendation:
+            return
+        if interactive:
+            json_output = recommendation.to_json()
+            pyperclip.copy(json_output)
     except Exception as e:
         raise RecommendationException(str(e))
     try:
-        html_content = json2html.convert(json=json_output)
-        with open("output.html", "w") as file:
-            file.write(html_content)
+        if interactive:
+            html_content = json2html.convert(json=json_output)
+            with open("output.html", "w") as file:
+                file.write(html_content)
     except Exception as e:
         raise VisualizationException(str(e))
-    return recommendation_package
+    return recommendation
