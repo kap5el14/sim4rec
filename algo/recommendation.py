@@ -1,54 +1,6 @@
+from algo.performance import compute_kpi
 from util.common import *
 from algo.similarity import similarity_between_events, similarity_between_trace_headers
-
-
-def compute_kpi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
-    common = Common.instance
-    kpi_dict = {}
-    kpi_weights = {}
-    normalized_last_row = common.future_df[common.future_df[common.conf.event_log_specs.case_id] == df[common.conf.event_log_specs.case_id].iloc[0]].iloc[0]
-    if common.conf.custom_performance_function:
-        original_df = common.conf.df.loc[df.index]
-        custom_performance = common.conf.custom_performance_function(original_df, df, normalized_last_row)
-        kpi_dict['custom'] = custom_performance
-        return kpi_dict, custom_performance
-    if common.conf.performance_weights.trace_length:
-        kpi_dict[TRACE_LENGTH] = 1 - normalized_last_row[TRACE_LENGTH]
-        kpi_weights[TRACE_LENGTH] = common.conf.performance_weights.trace_length
-    if common.conf.performance_weights.trace_duration:
-        kpi_dict[TRACE_DURATION] = 1 - normalized_last_row[TRACE_DURATION]
-        kpi_weights[TRACE_DURATION] = common.conf.performance_weights.trace_duration
-    for k, v in common.conf.performance_weights.numerical_trace_attributes.items():
-        if 'min' in v:
-            kpi_dict[k] = 1 - normalized_last_row[k]
-        elif 'max' in v:
-            kpi_dict[k] = normalized_last_row[k]
-        else:
-            raise ValueError
-        kpi_weights[k] = v[1]
-    for k, v in common.conf.performance_weights.categorical_trace_attributes.items():
-        value = v[0]
-        name = f"{k}=={value}"
-        kpi_dict[name] = 1 if normalized_last_row[k] == value else 0
-        kpi_weights[name] = v[1]
-    for k, v in common.conf.performance_weights.numerical_event_attributes.items():
-        for v2 in v:
-            if 'sum' in v2:
-                t = CUMSUM
-            elif 'avg' in v2:
-                t = CUMAVG
-            else:
-                raise ValueError
-            name = f"{k}{t}"
-            if 'min' in v2:
-                kpi_dict[name] = 1 - normalized_last_row[name]
-            elif 'max' in v2:
-                kpi_dict[name] = normalized_last_row[name]
-            else:
-                raise ValueError
-            kpi_weights[name] = v2[2]
-    performance = sum([kpi_dict[k] * kpi_weights[k] for k in kpi_dict.keys()])
-    return kpi_dict, performance  
 
 
 @dataclass
@@ -76,14 +28,18 @@ class RecommendationCandidate:
         kpi_dict, fp = compute_kpi(complete_peer_df)
         candidates = []
         for i in range(len(peer_future_df)):
+            is_output_activity = False
             acted_on = False
             for j in range(len(df)):
                 row = peer_future_df.iloc[i]
+                is_output_activity = row[common.conf.event_log_specs.activity] in common.conf.output_format.activities
+                if not is_output_activity:
+                    break
                 event_sim = similarity_between_events(row, df.iloc[j])
                 if event_sim >= sim:
                     acted_on = True
                     break
-            if not acted_on:
+            if is_output_activity and not acted_on:
                 candidates.append(RecommendationCandidate(row=row, proximity=proximities.iloc[i], peer_performance=fp, kpi_dict=kpi_dict))
         return candidates
 
@@ -98,6 +54,7 @@ class Recommendation:
     kpi: float = field(init=False, default=None)
     kpi_dict: dict[str, float] = field(init=False, default=None)
     proximity: float = field(init=False, default=None)
+    coherence: float = field(init=False, default=None)
     normalized_event: pd.Series = field(init=False, default=None)
 
     def __eq__(self, value: 'Recommendation') -> bool:
@@ -130,6 +87,9 @@ class Recommendation:
         proximity_sum = 0
         peer_performance_sum = 0
         kpi_sums = {}
+        values, counts = np.unique([can.row[common.conf.event_log_specs.activity] for can in self.cluster], return_counts=True)
+        main_activity = values[np.argmax(counts)]
+        self.cluster = [can for can in self.cluster if can.row[common.conf.event_log_specs.activity] == main_activity]
         for candidate in self.cluster:
             case_id = candidate.row[common.conf.event_log_specs.case_id]
             self.peers.add(case_id)
@@ -160,22 +120,20 @@ class Recommendation:
                 unix_epoch = pd.Timestamp("1970-01-01")
             attributes.append(timestamp_cols.apply(lambda x: x.median()).apply(lambda x: unix_epoch + pd.to_timedelta(x, unit='s')))
         self.event = pd.concat(attributes).dropna()
-        attributes = []
-        candidates_df = pd.DataFrame([common.train_df.loc[c.row.name] for c in self.cluster])
-        numerical_cols = candidates_df[common.conf.performance_weights.get_all_numerical_attributes()]
-        categorical_cols = candidates_df[list(common.conf.performance_weights.categorical_trace_attributes.keys())]
-        if not numerical_cols.empty:
-            attributes.append(numerical_cols.median())
-        if not categorical_cols.empty:
-            attributes.append(categorical_cols.mode().iloc[0])
-        self.normalized_event = pd.concat(attributes).dropna()
+        self.normalized_event = common.normalize(pd.DataFrame([self.event])).iloc[0]
+        sims = []
+        for i, can1 in enumerate(self.cluster):
+            for j, can2 in enumerate(self.cluster):
+                if j > i:
+                    sims.append(similarity_between_events(can1.row, can2.row))
+        self.coherence = np.mean(sims)
     
     def score(self):
-        return self.kpi * self.support * self.proximity
+        return self.kpi * (self.support + self.proximity + self.coherence)
     
     def dominates(self, rec: 'Recommendation'):
-        not_worse = self.support >= rec.support and self.kpi >= rec.kpi and self.proximity >= rec.proximity
-        better = self.support > rec.support or self.kpi > rec.kpi or self.proximity > rec.proximity
+        not_worse = self.support >= rec.support and self.kpi >= rec.kpi and self.proximity >= rec.proximity and self.coherence >= rec.coherence
+        better = self.support > rec.support or self.kpi > rec.kpi or self.proximity > rec.proximity or self.coherence > rec.coherence
         return not_worse and better
 
     @classmethod
@@ -203,22 +161,10 @@ class Recommendation:
                 if label not in clusters:
                     clusters[label] = []
                 clusters[label].append(candidates[idx])
-            recommendations: list[Recommendation] = []
             recommendations = [Recommendation(cluster=cluster, all_peers=all_peers, id=rec_index) for rec_index, cluster in enumerate(clusters.values())]
-            recommendations = list(filter(lambda rec: rec.event[common.conf.event_log_specs.activity] in common.conf.output_format.activities, recommendations))
         else:
             recommendations = [Recommendation(cluster=candidates, all_peers=all_peers, id=0)]
-        means = []
-        for rec in recommendations:
-            sims = []
-            for i, can1 in enumerate(rec.cluster):
-                for j, can2 in enumerate(rec.cluster):
-                    if j > i:
-                        sims.append(similarity_between_events(can1.row, can2.row))
-            means.append(np.mean(sims))
-        median = np.median([m for m in means if not np.isnan(m)])
-        mask = [np.isnan(mean) or mean >= median for mean in means]
-        recommendations = [rec for rec, m in zip(recommendations, mask) if m]
+        print(f'recommendations before: {len(recommendations)}\n')
         pareto: set[Recommendation] = set()
         for rec1 in recommendations:
             dominated = set()
@@ -232,6 +178,7 @@ class Recommendation:
             pareto = pareto.difference(dominated)
             if not flag:
                 pareto.add(rec1)
+        print(f'recommendations after: {len(pareto)}\n')
         return list(pareto)
 
 def make_recommendation(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame) -> Recommendation:

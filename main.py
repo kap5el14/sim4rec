@@ -8,6 +8,7 @@ warnings.filterwarnings('ignore', category=UserWarning, module='pandas')
 warnings.filterwarnings('ignore', category=UserWarning, module='numpy')
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
 warnings.filterwarnings('ignore', category=SettingWithCopyWarning)
+np.seterr(invalid='ignore')
 
 NEW = '-n' in sys.argv
 EVALUATION = '-e' in sys.argv
@@ -39,7 +40,7 @@ if EVALUATION:
     if not hasattr(custom_test_module, 'evaluate'):
         raise ValueError(f"Function 'evaluate' not found in {path}")
     test_function = getattr(custom_test_module, 'evaluate')
-    plot_dir_path = os.path.join('evaluation_results', 'edu')
+    plot_dir_path = os.path.join('evaluation_results', NAME)
     os.makedirs(plot_dir_path, exist_ok=True)
     old_plots = glob.glob(os.path.join(plot_dir_path, '*.svg'))
     for old_plot in old_plots:

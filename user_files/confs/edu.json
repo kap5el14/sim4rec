@@ -3,15 +3,15 @@
     "activity": "course_name_mode",
     "timestamp": "unitDate",
     "similarity_weights": {
-        "activity": 0.4,
+        "activity": 0.3,
         "timestamp": 0.1,
         "numerical_event_attributes": {
-            "unitEventGrade": 0.2,
+            "unitEventGrade": 0.25,
             "rewardAmount": 0.1
         },
         "categorical_event_attributes": {
             "relative_semester": 0.1,
-            "state": 0.05
+            "state": 0.1
         },
         "trace_length": 0.05,
         "numerical_trace_attributes": {},

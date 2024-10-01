@@ -48,8 +48,8 @@ class SimilarityWeights:
     event: float = field(init=False, default=None)
 
     def __post_init__(self):
-        self.trace = self.activity * 0.25 + self.timestamp * 0.25 + sum(list(self.numerical_trace_attributes.values()) + list(self.categorical_trace_attributes.values())) + sum(list(self.numerical_event_attributes.values())) * 0.25 + self.trace_length + sum(list(self.categorical_event_attributes.values())) * 0.25
-        self.event = self.activity * 0.75 + self.timestamp * 0.75 + sum(list(self.numerical_event_attributes.values())) * 0.75 + sum(list(self.categorical_event_attributes.values())) * 0.75
+        self.trace = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_trace_attributes.values()) + list(self.categorical_trace_attributes.values())) + sum(list(self.numerical_event_attributes.values())) / 2 + self.trace_length
+        self.event = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_event_attributes.values())) / 2 + sum(list(self.categorical_event_attributes.values()))
         if not (0.99 <= self.trace + self.event <= 1.01):
             raise ValueError(f"Similarity weights sum up to {self.trace + self.event:.2f} != 1!")
 
@@ -92,8 +92,8 @@ class EvaluationDatasetsFormat:
     def __post_init__(self):
         new_training_periods = []
         for period in self.training_periods:
-            start = pd.to_datetime(period['start'])
-            end = pd.to_datetime(period['end'])
+            start = pd.to_datetime(period['start'], format='mixed')
+            end = pd.to_datetime(period['end'], format='mixed')
             new_training_periods.append((start, end))
         self.training_periods = new_training_periods
 
@@ -292,7 +292,8 @@ class Common:
                 def normalize_row(row: pd.DataFrame):
                     new_row = row.copy()
                     for attr, normalizer in attribute_normalizers.items():
-                        new_row = normalizer(new_row)
+                        if attr in row.index:
+                            new_row = normalizer(new_row)
                     return new_row
                 return df.apply(normalize_row, axis=1)
             return normalize

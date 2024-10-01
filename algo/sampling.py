@@ -1,12 +1,20 @@
 from util.common import *
 from algo.similarity import similarity_between_trace_headers, similarity_between_traces
+from algo.performance import compute_kpi
 
-def first_pass(sample_size=300) -> list[pd.DataFrame]:
+successful_dfs = None
+
+def first_pass() -> list[pd.DataFrame]:
+    global successful_dfs
+    if successful_dfs is not None:
+        return successful_dfs
     common = Common.instance
     case_ids = common.train_df[common.conf.event_log_specs.case_id].unique()
-    return [common.train_df[common.train_df[common.conf.event_log_specs.case_id] == case_id] for case_id in random.sample(list(case_ids), min(sample_size, len(case_ids)))]
+    dfs = [common.train_df[common.train_df[common.conf.event_log_specs.case_id] == case_id] for case_id in case_ids]
+    successful_dfs = [df for df in dfs if compute_kpi(df)[1]]
+    return successful_dfs
 
-def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=40, log=False) -> list[pd.DataFrame]:
+def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=80, log=False) -> list[pd.DataFrame]:
     best_dfs: list[tuple[float, pd.DataFrame]] = []
     if log:
         log_results = []
@@ -30,7 +38,6 @@ def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=40, log=F
                 continue
             trimmed_df = peer_df.head(i)
             current_sim = similarity_between_trace_headers(df, trimmed_df)
-            #print(f"{i}: {current_sim}")
             if current_sim >= best_sim:
                 best_sim = current_sim
                 best_df = trimmed_df
@@ -45,20 +52,22 @@ def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=40, log=F
         best_dfs.append((best_sim, best_df))
         if log:
             log_results.append(new_log_result)
-        #print()
     best_dfs_sorted = sorted(best_dfs, key=lambda x: x[0], reverse=True)
     result = [df for _, df in best_dfs_sorted[:min(sample_size, len(best_dfs_sorted))]]
     if log:
         return result, log_results
     return result
 
-def third_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20) -> list[tuple[float, pd.DataFrame]]:
+def third_pass(dfs: list[pd.DataFrame], sample_size=40) -> list[pd.DataFrame]:
+    return list(sorted(dfs, key=lambda df: compute_kpi(df=df)[1], reverse=True))[:min(len(dfs), sample_size)]
+
+def fourth_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20) -> list[tuple[float, pd.DataFrame]]:
     best_dfs: list[tuple[float, pd.DataFrame]] = []
-    for peer_df in tqdm.tqdm(dfs, desc='Third Pass: Processing Peer DataFrames'):
+    for peer_df in tqdm.tqdm(dfs, desc='Fourth Pass: Processing Peer DataFrames'):
         sim = similarity_between_traces(df, peer_df)
         best_dfs.append((sim, peer_df))
     best_dfs_sorted = sorted(best_dfs, key=lambda x: x[0], reverse=True)
     return best_dfs_sorted[:min(sample_size, len(best_dfs_sorted))]
 
 def sample_peers(df) -> list[tuple[float, pd.DataFrame]]:
-    return third_pass(dfs=second_pass(dfs=first_pass(), df=df), df=df)
+    return fourth_pass(dfs=third_pass(dfs=second_pass(dfs=first_pass(), df=df)), df=df)

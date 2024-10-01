@@ -3,28 +3,22 @@
     "activity": "concept:name",
     "timestamp": "time:timestamp",
     "similarity_weights": {
-        "activity": 0.2,
-        "timestamp": 0.05,
+        "activity": 0.1,
+        "timestamp": 0.1,
         "numerical_event_attributes": {
             "FirstWithdrawalAmount": 0.05,
             "NumberOfTerms": 0.05,
             "MonthlyCost": 0.05,
-            "CreditScore": 0.05,
-            "OfferedAmount": 0.05
+            "CreditScore": 0.15,
+            "OfferedAmount": 0.25
         },
-        "categorical_event_attributes": {
-            "Accepted": 0.1,
-            "Selected": 0.1,
-            "lifecycle:transition": 0.05
-        },
-        "trace_length": 0.05,
+        "trace_length": 0.1,
         "numerical_trace_attributes": {
-            "case:RequestedAmount": 0.05
+            "case:RequestedAmount": 0.1
         },
         "categorical_trace_attributes": {
-            "case:LoanGoal": 0.05,
-            "case:ApplicationType": 0.05,
-            "org:resource": 0.05
+            "case:LoanGoal": 0.025,
+            "case:ApplicationType": 0.025
         }
     },
     "output_attributes": {
@@ -42,6 +36,28 @@
         "timestamp": [],
         "activities": [
             "O_Create Offer"
+        ]
+    },
+    "evaluation": {
+        "training_size": 200,
+        "testing_size": 200,
+        "training_periods": [
+            {
+                "start": "2016-01-01T00:00:00Z",
+                "end": "2016-03-31T23:59:59Z"
+            },
+            {
+                "start": "2016-04-01T00:00:00Z",
+                "end": "2016-06-30T23:59:59Z"
+            },
+            {
+                "start": "2016-07-01T00:00:00Z",
+                "end": "2016-09-30T23:59:59Z"
+            },
+            {
+                "start": "2016-10-01T00:00:00Z",
+                "end": "2016-12-31T23:59:59Z"
+            }
         ]
     }
 }
