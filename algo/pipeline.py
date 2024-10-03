@@ -1,59 +1,46 @@
-from util.common import *
+from common import *
 from algo.sampling import sample_peers
-from algo.recommendation import make_recommendation
+from algo.recommendation import make_recommendation, Recommendation
 import pyperclip
 from json2html import *
 
-class PreprocessingException(Exception):
-    def __init__(self, message):
-        super().__init__(f"Couldn't preprocess trace due to the following exception:\n{message}")
-
-class SamplingException(Exception):
-    def __init__(self, message):
-        super().__init__(f"Couldn't sample peers due to the following exception:\n{message}")
-
-class RecommendationException(Exception):
-    def __init__(self, message):
-        super().__init__(f"Couldn't compute recommendations due to the following exception:\n{message}")
-
-class VisualizationException(Exception):
-    def __init__(self, message):
-        super().__init__(f"Couldn't visualize recommendations due to the following exception:\n{message}")
-
-def recommendation_pipeline(df: pd.DataFrame, interactive=True, all=False):
-    common = Common.instance
-    try:
-        df.columns = df.columns.str.strip()
-        df[common.conf.event_log_specs.timestamp] = pd.to_datetime(df[common.conf.event_log_specs.timestamp], format='mixed')
-        df, _ = common.preprocess(df=df)
-    except Exception as e:
-        raise PreprocessingException(str(e))
-    try:
-        peers = sample_peers(df)
-        for p in peers:
-            print(p[1]['event'])
-            print()
-
-        print(df['event'])
-        print()
-    except Exception as e:
-        raise SamplingException(str(e))
-    try:
-        recommendation = make_recommendation(dfs=peers, df=df, all=all)
-        print(recommendation)
-        print()
-        if not recommendation:
-            return
+class Pipeline:
+    def __init__(self, df: pd.DataFrame):
+        common = Common.instance
+        self.df = df
+        self.df.columns = self.df.columns.str.strip()
+        self.df[common.conf.event_log_specs.timestamp] = pd.to_datetime(self.df[common.conf.event_log_specs.timestamp], format='mixed')
+        self.df, _ = common.preprocess(df=self.df)
+        self.peers = sample_peers(self.df)
+        self.recommendations = make_recommendation(dfs=self.peers, df=self.df)
+        
+    def __str__(self, n=None):
+        result = ''
+        common = Common.instance
+        if n is None:
+            n = len(self.recommendations)
+        for i, p in enumerate(self.peers):
+           result += f'Peer no. {i}: \n{common.get_original(p[1])[[common.conf.event_log_specs.case_id, common.conf.event_log_specs.activity, common.conf.event_log_specs.timestamp]]}\n\n'
+        result += f'Recommendee:\n{common.get_original(self.df)[[common.conf.event_log_specs.case_id, common.conf.event_log_specs.activity, common.conf.event_log_specs.timestamp]]}\n\n'
+        for i, rec in enumerate(self.recommendations[:min(len(self.recommendations), n)]):
+            result += f'Recommendation no. {i}:\n{rec}\n'
+        return result
+    
+    def get_best_recommendation(self, interactive: bool = False) -> Recommendation:
+        recommendations = self.get_n_recommendations(n=1, interactive=interactive)
+        if recommendations:
+            return recommendations[0]
+        
+    def get_all_recommendations(self, interactive: bool = False) -> list[Recommendation]:
+        return self.get_n_recommendations(n=len(self.recommendations), interactive=interactive)
+    
+    def get_n_recommendations(self, n: int, interactive: bool = False) -> list[Recommendation]:
+        recommendations = self.recommendations[:min(len(self.recommendations), n)]
         if interactive:
-            json_output = recommendation.to_json()
+            print(self.__str__(n=n))
+            json_output = Recommendation.to_json(recommendations)
             pyperclip.copy(json_output)
-    except Exception as e:
-        raise RecommendationException(str(e))
-    try:
-        if interactive:
             html_content = json2html.convert(json=json_output)
-            with open("output.html", "w") as file:
+            with open("recommendation.html", "w") as file:
                 file.write(html_content)
-    except Exception as e:
-        raise VisualizationException(str(e))
-    return recommendation
+        return recommendations

@@ -1,6 +1,6 @@
-from util.common import *
+from common import *
 from algo.similarity import similarity_between_trace_headers, similarity_between_traces
-from algo.performance import compute_kpi
+from algo.performance import KPIUtils
 
 common = None
 successful_dfs = None
@@ -15,7 +15,7 @@ def first_pass() -> list[pd.DataFrame]:
     for case_id, df in common.train_df.groupby(common.conf.event_log_specs.case_id):
         if case_id in case_ids:
             dfs.append(df)
-    successful_dfs = [df for df in dfs if compute_kpi(df)[1]]
+    successful_dfs = [df for df in dfs if KPIUtils.instance.compute_kpi(df)[1]]
     return successful_dfs
 
 def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=80, log=False) -> list[pd.DataFrame]:
@@ -63,7 +63,7 @@ def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=80, log=F
     return result
 
 def third_pass(dfs: list[pd.DataFrame], sample_size=40) -> list[pd.DataFrame]:
-    return list(sorted(dfs, key=lambda df: compute_kpi(df=df)[1], reverse=True))[:min(len(dfs), sample_size)]
+    return list(sorted(dfs, key=lambda df: KPIUtils.instance.compute_kpi(df=df)[1], reverse=True))[:min(len(dfs), sample_size)]
 
 def fourth_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20) -> list[tuple[float, pd.DataFrame]]:
     best_dfs: list[tuple[float, pd.DataFrame]] = []

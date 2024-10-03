@@ -39,7 +39,6 @@
             "SIRSCriteria2OrMore": 0.005
         }
     },
-    "just_prediction": true,
     "output_attributes": {
         "categorical": [
             "org:group"

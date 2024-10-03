@@ -1,7 +1,7 @@
-from util.common import *
+from common import *
 from scipy.stats import wasserstein_distance
 
-def similarity_between_events(row1, row2):
+def similarity_between_events(row1, row2, just_attributes=False):
     common = Common.instance
     def ap():
         if row1[common.conf.event_log_specs.activity] != row2[common.conf.event_log_specs.activity]:
@@ -45,6 +45,8 @@ def similarity_between_events(row1, row2):
         if sim is not None:
             sims[f'neap({num_attr})'] = sim
             weights[f'neap({num_attr})'] = weight / 2
+    if just_attributes:
+        weights['ap'] = 0
     result = sum([sims[k] * weights[k] for k in sims.keys()]) / sum(weights.values())
     if pd.isna(result):
         raise ValueError("Similarity must be a number!")

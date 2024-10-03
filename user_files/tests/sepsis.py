@@ -1,7 +1,8 @@
-from algo.performance import compute_kpi
-from util.common import *
-from algo.pipeline import recommendation_pipeline
+from algo.performance import KPIUtils
+from common import *
+from algo.pipeline import Pipeline
 from algo.recommendation import Recommendation
+from util.synchronize import synchronize
 
 plot_dir_path = os.path.join('evaluation_results', 'sepsis')
 no_recommendation = []
@@ -50,7 +51,7 @@ def plot_t_test2():
 
 def evaluate(commons: list[Common]):
     for common in tqdm.tqdm(commons, 'Evaluating training-testing set pairs'):
-        Common.set_instance(common)
+        synchronize(common)
         print(f'Training period: {common.training_period}')
         activity_col = common.conf.event_log_specs.activity
         case_ids = common.test_df[common.conf.event_log_specs.case_id].unique()
@@ -62,8 +63,9 @@ def evaluate(commons: list[Common]):
                 continue
             past_normalized_df = full_normalized_df[full_normalized_df.index.isin(past_original_df.index)]
             future_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] > common.training_period[1]]
-            performance = compute_kpi(full_normalized_df)[1]
-            recommendation = recommendation_pipeline(df=past_normalized_df, interactive=False)
+            performance = KPIUtils.instance.compute_kpi(full_normalized_df)[1]
+            recommendations = Pipeline(df=past_normalized_df).get_all_recommendations(interactive=True)
+            recommendation = recommendations[0]
             if not recommendation:
                 no_recommendation.append(True)
                 continue

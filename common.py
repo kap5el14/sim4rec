@@ -172,10 +172,11 @@ class Configuration:
                 training_periods=try_read(['evaluation', 'training_periods'], default=[])
             )
 
-    @classmethod
-    def get_directory(cls, name: str, evaluation: bool):
+    @staticmethod
+    def get_directory(name: str, evaluation: bool):
         suffix = 'eval' if evaluation else 'normal'
         return os.path.join('data', name, suffix)
+    
 
 @dataclass
 class Common:
@@ -188,10 +189,6 @@ class Common:
     future_normalize: Callable[[pd.DataFrame], pd.DataFrame] = field(init=False, default=None)
     training_period: tuple[datetime, datetime] = field(init=True, default=None)
     instance: 'Common' = None
-
-    @classmethod
-    def set_instance(cls, instance: 'Common'):
-        cls.instance = instance
 
     def __str__(self):
         return str(self.training_period)
@@ -348,4 +345,7 @@ class Common:
     def deserialize(cls, path) -> 'Common':
         with open(path, 'rb') as f:
             return dill.load(f)
+
+    def get_original(self, df) -> pd.DataFrame:
+        return self.conf.df[self.conf.df[self.conf.event_log_specs.case_id] == df[self.conf.event_log_specs.case_id].iloc[0]].iloc[:len(df)]
 

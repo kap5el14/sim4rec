@@ -1,9 +1,9 @@
-from util.common import *
+from common import *
 import sys
 from pandas.errors import SettingWithCopyWarning
 from evaluation.datasets import generate_evaluation_datasets
-from algo.pipeline import recommendation_pipeline
-from algo.performance import create_kpi_normalizer
+from algo.pipeline import Pipeline
+from util.synchronize import synchronize
 
 warnings.filterwarnings('ignore', category=UserWarning, module='pandas')
 warnings.filterwarnings('ignore', category=UserWarning, module='numpy')
@@ -31,7 +31,6 @@ else:
         commons.append(Common(conf=conf, train_df=conf.df))
     for i, fold in enumerate(commons):
         fold.serialize(os.path.join(Configuration.get_directory(NAME, EVALUATION), f'{i}.pkl'))
-create_kpi_normalizer(commons=commons)
 if EVALUATION:
     path = os.path.join('user_files', 'tests', f'{NAME}.py')
     if not os.path.isfile(path):
@@ -49,25 +48,41 @@ if EVALUATION:
         os.remove(old_plot)
     test_function(commons)
 else:
-    Common.set_instance(commons[0])
+    synchronize(commons[0])
     while True:
-        user_input = input("Provide the name of the CSV file containing your trace or type 'q' to quit:\n")
+        user_input = input("Provide the name of the CSV file containing your trace and, optionally, the preferred number of recommendations (integer or '-all'; default=1). Alternatively, type 'q' to quit:\n")
         if user_input.lower() == 'q':
             print("User exited the program.")
             break
         else:
             try:
-                df = pd.read_csv(os.path.join('user_files', 'traces', NAME, f'{user_input}.csv'))
+                inputs = user_input.split()
+                df = pd.read_csv(os.path.join('user_files', 'traces', NAME, f'{inputs[0]}.csv'))
             except Exception as e:
                 print(e)
             else:
                 print("You provided the following dataframe:")
                 print(df)
-                recommendation = recommendation_pipeline(df=df)
-                if recommendation:
-                    print(recommendation)
-                    print("\nJSON has been copied to clipboard.")
+                if len(inputs) == 1:
+                    recommendation = Pipeline(df=df).get_best_recommendation(interactive=True)
+                    if recommendation:
+                        print("\nJSON has been copied to clipboard.")
+                    else:
+                        print("No recommendation could be made.")
+                elif inputs[1] == '-all':
+                    recommendations = Pipeline(df=df).get_all_recommendations(interactive=True)
                 else:
-                    print("No recommendation could be made.")
-                
+                    try:
+                        number_of_recs = int(inputs[1])
+                    except Exception as e:
+                        print(e)
+                        continue
+                    recommendations = Pipeline(df=df).get_n_recommendations(n=number_of_recs, interactive=True)
+                    if recommendations:
+                        print("\nJSON has been copied to clipboard.")
+                    else:
+                        print("No recommendation could be made.")
+
+                    
+                    
         

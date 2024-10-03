@@ -1,7 +1,8 @@
-from algo.performance import compute_kpi
-from util.common import *
-from algo.pipeline import recommendation_pipeline
+from algo.performance import KPIUtils
+from common import *
+from algo.pipeline import Pipeline
 from algo.recommendation import Recommendation
+from util.synchronize import synchronize
 
 plot_dir_path = os.path.join('evaluation_results', 'edu')
 # No recommendation made
@@ -127,8 +128,8 @@ def plot_component_kpis():
     plt.savefig(os.path.join(plot_dir_path, 'component_kpis.svg'))
 
 def evaluate(commons: list[Common]):
-    for common in tqdm.tqdm([commons[0]], 'Evaluating training-testing set pairs'):
-        Common.set_instance(common)
+    for common in tqdm.tqdm(commons, 'Evaluating training-testing set pairs'):
+        synchronize(common)
         print(f'Training period: {common.training_period}')
         activity_col = common.conf.event_log_specs.activity
         case_ids = common.test_df[common.conf.event_log_specs.case_id].unique()
@@ -141,7 +142,7 @@ def evaluate(commons: list[Common]):
             past_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] <= common.training_period[1]]
             past_normalized_df = full_normalized_df[full_normalized_df.index.isin(past_original_df.index)]
             future_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] > common.training_period[1]]
-            recommendation = recommendation_pipeline(df=past_normalized_df, interactive=False)
+            recommendation = Pipeline(df=past_normalized_df).get_best_recommendation()
             if not recommendation:
                 no_recommendation.append(True)
                 continue
@@ -161,7 +162,7 @@ def evaluate(commons: list[Common]):
             courses_taken_next_semester = list(future_original_df[future_original_df['relative_semester'] == target_semester][activity_col])
             followed = course in courses_taken_next_semester
             mask.append(followed)
-            performance = compute_kpi(full_normalized_df)[1]
+            performance = KPIUtils.instance.compute_kpi(full_normalized_df)[1]
             if performance:
                 if followed:
                     ratios_followers.append(recommendation.kpi / performance)
