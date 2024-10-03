@@ -2,15 +2,19 @@ from util.common import *
 from algo.similarity import similarity_between_trace_headers, similarity_between_traces
 from algo.performance import compute_kpi
 
+common = None
 successful_dfs = None
 
 def first_pass() -> list[pd.DataFrame]:
-    global successful_dfs
-    if successful_dfs is not None:
+    global successful_dfs, common
+    if common is not None and common == Common.instance:
         return successful_dfs
     common = Common.instance
     case_ids = common.train_df[common.conf.event_log_specs.case_id].unique()
-    dfs = [common.train_df[common.train_df[common.conf.event_log_specs.case_id] == case_id] for case_id in case_ids]
+    dfs = []
+    for case_id, df in common.train_df.groupby(common.conf.event_log_specs.case_id):
+        if case_id in case_ids:
+            dfs.append(df)
     successful_dfs = [df for df in dfs if compute_kpi(df)[1]]
     return successful_dfs
 
@@ -63,7 +67,7 @@ def third_pass(dfs: list[pd.DataFrame], sample_size=40) -> list[pd.DataFrame]:
 
 def fourth_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20) -> list[tuple[float, pd.DataFrame]]:
     best_dfs: list[tuple[float, pd.DataFrame]] = []
-    for peer_df in tqdm.tqdm(dfs, desc='Fourth Pass: Processing Peer DataFrames'):
+    for peer_df in dfs:
         sim = similarity_between_traces(df, peer_df)
         best_dfs.append((sim, peer_df))
     best_dfs_sorted = sorted(best_dfs, key=lambda x: x[0], reverse=True)

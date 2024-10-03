@@ -1,7 +1,6 @@
 from util.common import *
 from scipy.stats import wasserstein_distance
 
-
 def similarity_between_events(row1, row2):
     common = Common.instance
     def ap():
@@ -11,18 +10,17 @@ def similarity_between_events(row1, row2):
             return 1
         return 1 - abs(row1[ACTIVITY_OCCURRENCE] - row2[ACTIVITY_OCCURRENCE]) / 2
     def ceap(attr):
+        if pd.isna(row1[attr]) or pd.isna(row2[attr]):
+            return
         if row1[attr] == row2[attr]:
             return 1
         return 0
     def neap(attr):
         diffs = []
         for a in [attr, f'{attr}{CUMAVG}', f'{attr}{MW_AVG}', f'{attr}{CUMSUM}', f'{attr}{MW_SUM}']:
-            if pd.isna(row1[a]) and pd.isna(row2[a]):
-                diffs.append(0)
-            elif pd.isna(row1[a]) or pd.isna(row2[a]):
-                diffs.append(1)
-            else:
-                diffs.append(abs(row1[a] - row2[a]))       
+            if pd.isna(row1[a]) or pd.isna(row2[a]):
+                return
+            diffs.append(abs(row1[a] - row2[a]))       
         return 1 - sum(diffs) / 5
     def tep():
         diffs = []
@@ -38,63 +36,69 @@ def similarity_between_events(row1, row2):
         'tep': common.conf.similarity_weights.timestamp / 2,
     }
     for cat_attr, weight in common.conf.similarity_weights.categorical_event_attributes.items():
-        sims[f'ceap({cat_attr})'] = ceap(cat_attr)
-        weights[f'ceap({cat_attr})'] = weight
+        sim = ceap(cat_attr)
+        if sim is not None:
+            sims[f'ceap({cat_attr})'] = sim
+            weights[f'ceap({cat_attr})'] = weight
     for num_attr, weight in common.conf.similarity_weights.numerical_event_attributes.items():
-        sims[f'neap({num_attr})'] = neap(num_attr)
-        weights[f'neap({num_attr})'] = weight / 2
-    result = sum([sims[k] * weights[k] for k in sims.keys()]) / common.conf.similarity_weights.event
+        sim = neap(num_attr)
+        if sim is not None:
+            sims[f'neap({num_attr})'] = sim
+            weights[f'neap({num_attr})'] = weight / 2
+    result = sum([sims[k] * weights[k] for k in sims.keys()]) / sum(weights.values())
     if pd.isna(result):
         raise ValueError("Similarity must be a number!")
     return result
 
-def similarity_between_trace_headers(df1, df2, log=False):
+def similarity_between_trace_headers(df1, df2):
     common = Common.instance
-    component_sims = {}
     def asp():
         c_sims = []
         for a in [UNIQUE_ACTIVITIES, ACTIVITIES_MEAN, ACTIVITIES_STD]:
             r = 1 - abs(df1[a].iloc[-1] - df2[a].iloc[-1])
-            component_sims[a] = r
             c_sims.append(r)
-        return sum(c_sims) / 3
+        all_activities = set(df1[common.conf.event_log_specs.activity]).union(df2[common.conf.event_log_specs.activity])
+        vecs = []
+        for df in [df1, df2]:
+            vec = {}
+            for act in all_activities:
+                if act in df[common.conf.event_log_specs.activity]:
+                    vec[act] = df[df[common.conf.event_log_specs.activity] == act][ACTIVITY_OCCURRENCE].iloc[-1]
+                else:
+                    vec[act] = 0
+            vecs.append(vec)
+        vec1 = list(vecs[0].values())
+        vec2 = list(vecs[1].values())
+        denominator = np.linalg.norm(vec1) * np.linalg.norm(vec2)
+        cosine_sim = np.dot(vec1, vec2) / denominator if denominator else 1
+        c_sims.append(cosine_sim)
+        return sum(c_sims) / 4
     def ctap(attr):
         r = 1 if df1[attr].iloc[0] == df2[attr].iloc[0] else 0
-        component_sims[attr] = r
         return r
     def ntap(attr):
         r = 1 - abs(df1[attr].iloc[0] - df2[attr].iloc[0])
-        component_sims[attr] = r
         return r
     def anap(attr):
         c_sims = []
         for a in [f'{attr}{CUMSUM}', f'{attr}{CUMAVG}']:
             val1 = df1[a].iloc[-1]
             val2 = df2[a].iloc[-1]
-            if pd.isna(val1) and pd.isna(val2):
-                r = 1
-            elif pd.isna(val1) or pd.isna(val2):
-                r = 0
+            if pd.isna(val1) or pd.isna(val2):
+                return
             else:
                 r = 1 - abs(val1 - val2)
-            component_sims[a] = r
             c_sims.append(r)
         return sum(c_sims) / 2
     def ttp():
-        c_sims = []
-        r = 1 - abs(df1[TRACE_START].iloc[0] - df2[TRACE_START].iloc[0])
-        component_sims[TRACE_START] = r
-        c_sims.append(r)
-        r = 1 - abs(df1[TIME_FROM_TRACE_START].iloc[-1] - df2[TIME_FROM_TRACE_START].iloc[-1])
-        component_sims[TRACE_DURATION] = r
-        c_sims.append(r)
-        r = 1 - abs(df1[common.conf.event_log_specs.timestamp].iloc[-1] - df2[common.conf.event_log_specs.timestamp].iloc[-1])
-        component_sims[TRACE_END] = r
-        c_sims.append(r)
+        c_sims = [
+            1 - abs(df1[TRACE_START].iloc[0] - df2[TRACE_START].iloc[0]),
+            1 - abs(df1[TIME_FROM_TRACE_START].iloc[-1] - df2[TIME_FROM_TRACE_START].iloc[-1]),
+            1 - abs(df1[common.conf.event_log_specs.timestamp].iloc[-1] - df2[common.conf.event_log_specs.timestamp].iloc[-1])
+        ]
         return sum(c_sims) / 3
     def tlp():
         r = 1 - abs(df1[INDEX].iloc[-1] - df2[INDEX].iloc[-1])
-        component_sims[TRACE_LENGTH] = r
         return r
     sims = {
         'asp': asp(),
@@ -110,19 +114,19 @@ def similarity_between_trace_headers(df1, df2, log=False):
         sims[f"ctap({cat_attr})"] = ctap(cat_attr)
         weights[f"ctap({cat_attr})"] = weight
     for num_attr, weight in common.conf.similarity_weights.numerical_event_attributes.items():
-        sims[f"anap({num_attr})"] = anap(num_attr)
-        weights[f"anap({num_attr})"] = weight / 2
+        sim = anap(num_attr)
+        if sim is not None:
+            sims[f"anap({num_attr})"] = sim
+            weights[f"anap({num_attr})"] = weight / 2
     for num_attr, weight in common.conf.similarity_weights.numerical_trace_attributes.items():
         sims[f"ntap({num_attr})"] = ntap(num_attr)
         weights[f"ntap({num_attr})"] = weight
-    result = sum([sims[k] * weights[k] for k in sims.keys()]) / common.conf.similarity_weights.trace
-    if log:
-        return result, component_sims
+    result = sum([sims[k] * weights[k] for k in sims.keys()]) / sum(weights.values())
     if pd.isna(result):
         raise ValueError("Similarity must be a number!")
     return result
 
-def similarity_between_traces(df1, df2, log=False):
+def similarity_between_traces(df1, df2):
     common = Common.instance
     def ed(distance_matrix, m, n):
         dp = np.zeros((m + 1, n + 1))
@@ -186,10 +190,7 @@ def similarity_between_traces(df1, df2, log=False):
         for j in range(num_rows_df2):
             row2 = df2.iloc[j]
             distance_matrix[i, j] = 1 - similarity_between_events(row1, row2)
-    if log:
-        th_sim, th_component_similarities = similarity_between_trace_headers(df1, df2, log=True)
-    else:
-        th_sim = similarity_between_trace_headers(df1, df2)
+    th_sim = similarity_between_trace_headers(df1, df2)
     sims = {
         'th': th_sim,
         'ed': ed(distance_matrix, num_rows_df1, num_rows_df2),
@@ -203,8 +204,6 @@ def similarity_between_traces(df1, df2, log=False):
         'emd': common.conf.similarity_weights.event / 3
     }
     result = sum([sims[k] * weights[k] for k in sims.keys()])
-    if log:
-        return result, sims, th_component_similarities
     if pd.isna(result):
         raise ValueError("Similarity must be a number!")
     return result

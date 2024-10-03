@@ -5,8 +5,9 @@ from algo.recommendation import Recommendation
 
 plot_dir_path = os.path.join('evaluation_results', 'bpic')
 no_recommendation = []
-similarities = []
-performances = []
+credit_score_times_requested_amount_scores = []
+recommended_amounts = []
+actual_amounts = []
 ratios_first_withdrawal_amount = []
 ratios_number_of_terms = []
 ratios_monthly_cost = []
@@ -26,27 +27,14 @@ def plot_rec_statistics():
         bar_plot.text(i, v, f'{round(v * 100)}%', ha='center', va='bottom')
     plt.savefig(os.path.join(plot_dir_path, 'rec_statistics.svg'))
 
-def plot_similarities():    
-    plt.figure(figsize=(10, 6))
-    sns.boxplot(data=[similarities], showfliers=False, palette='Blues', fill=False)
-    plt.title('Similarity of Recommended and Accepted Offer')
-    plt.ylim(0, 1)
-    plt.ylabel('similarity')
-    medians = [np.median(similarities)]
-    for i, median in enumerate(medians):
-        plt.text(i, median, f'{median:.2f}', ha='center', va='bottom', color='black', fontsize=10)
-    plt.savefig(os.path.join(plot_dir_path, 'similarities.svg'))
-
 def plot_correlation():
-    pearson_corr, _ = stats.pearsonr(similarities, performances)
+    pearson_corr, _ = stats.pearsonr(actual_amounts, recommended_amounts)
     plt.figure(figsize=(10, 6))
-    sns.scatterplot(x=similarities, y=performances, label=f"r = {pearson_corr:.2f}")
-    sns.regplot(x=similarities, y=performances, scatter=False)
-    plt.ylim(0, 1)
-    plt.xlim(0, 1)
-    plt.title('Correlation between Similarity and Performance', fontsize=14)
-    plt.xlabel('similarity', fontsize=12)
-    plt.ylabel('performance', fontsize=12)
+    sns.scatterplot(x=actual_amounts, y=recommended_amounts, label=f"r = {pearson_corr:.2f}", palette=['blue'])
+    sns.regplot(x=actual_amounts, y=recommended_amounts, scatter=False)
+    plt.title('Correlation', fontsize=14)
+    plt.xlabel('actual amount', fontsize=12)
+    plt.ylabel('recommended amount', fontsize=12)
     plt.legend()
     plt.savefig(os.path.join(plot_dir_path, 'correlation.svg'))
 
@@ -79,7 +67,7 @@ def evaluate(commons: list[Common]):
         print(f'Training period: {common.training_period}')
         activity_col = common.conf.event_log_specs.activity
         case_ids = common.test_df[common.conf.event_log_specs.case_id].unique()
-        for case_id in tqdm.tqdm(case_ids, 'Testing trace'):
+        for case_id in tqdm.tqdm(case_ids, 'Evaluating traces'):
             full_original_df = common.conf.df[common.conf.df[common.conf.event_log_specs.case_id] == case_id]
             full_normalized_df = common.test_df[common.test_df[common.conf.event_log_specs.case_id] == case_id]
             past_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] <= common.training_period[1]]
@@ -90,6 +78,10 @@ def evaluate(commons: list[Common]):
                 continue
             o_accepted_df = future_original_df[future_original_df[activity_col].isin(['O_Accepted'])]
             if o_accepted_df.empty:
+                continue
+            if "A_Accepted" not in past_original_df[common.conf.event_log_specs.activity].values:
+                continue
+            if not Counter(past_original_df[common.conf.event_log_specs.activity])["O_Create Offer"]:
                 continue
             accepted_normalized_offer = full_normalized_df[
                 (full_normalized_df['EventID'].isin([o_accepted_df['OfferID'].iloc[-1]])) &
@@ -104,7 +96,7 @@ def evaluate(commons: list[Common]):
                 no_recommendation.append(True)
                 continue
             no_recommendation.append(False)
-            if accepted_original_offer['FirstWithdrawalAmount']:
+            if accepted_original_offer['FirstWithdrawalAmount'] and recommendation.event['FirstWithdrawalAmount']:
                 ratios_first_withdrawal_amount.append(recommendation.event['FirstWithdrawalAmount'] / accepted_original_offer['FirstWithdrawalAmount'])
             if accepted_original_offer['NumberOfTerms']:
                 ratios_number_of_terms.append(recommendation.event['NumberOfTerms'] / accepted_original_offer['NumberOfTerms'])
@@ -112,12 +104,11 @@ def evaluate(commons: list[Common]):
                 ratios_monthly_cost.append(recommendation.event['MonthlyCost'] / accepted_original_offer['MonthlyCost'])
             if accepted_original_offer['OfferedAmount']:
                 ratios_offered_amount.append(float(recommendation.event['OfferedAmount'] / accepted_original_offer['OfferedAmount']))
-            sim = 1 - abs(accepted_normalized_offer['OfferedAmount'] - recommendation.normalized_event['OfferedAmount'])
-            similarities.append(sim)
-            performances.append(performance)
+            credit_score_times_requested_amount_scores.append(accepted_original_offer['CreditScore'] * accepted_original_offer["case:RequestedAmount"])
+            recommended_amounts.append(recommendation.event['OfferedAmount'])
+            actual_amounts.append(accepted_original_offer['OfferedAmount'])
             ratios_kpi.append(recommendation.kpi / performance)
     plot_rec_statistics()
-    plot_similarities()
     plot_correlation()
     plot_ratios()
     plot_kpi_ratios()

@@ -3,6 +3,7 @@ import sys
 from pandas.errors import SettingWithCopyWarning
 from evaluation.datasets import generate_evaluation_datasets
 from algo.pipeline import recommendation_pipeline
+from algo.performance import create_kpi_normalizer
 
 warnings.filterwarnings('ignore', category=UserWarning, module='pandas')
 warnings.filterwarnings('ignore', category=UserWarning, module='numpy')
@@ -30,6 +31,7 @@ else:
         commons.append(Common(conf=conf, train_df=conf.df))
     for i, fold in enumerate(commons):
         fold.serialize(os.path.join(Configuration.get_directory(NAME, EVALUATION), f'{i}.pkl'))
+create_kpi_normalizer(commons=commons)
 if EVALUATION:
     path = os.path.join('user_files', 'tests', f'{NAME}.py')
     if not os.path.isfile(path):

@@ -1,0 +1,94 @@
+{
+    "case_id": "case",
+    "activity": "event",
+    "timestamp": "startTime",
+    "similarity_weights": {
+        "activity": 0.19,
+        "timestamp": 0.2,
+        "trace_length": 0.1,
+        "numerical_event_attributes": {
+            "CRP": 0.1,
+            "Leucocytes": 0.1
+        },
+        "numerical_trace_attributes": {
+            "Age": 0.1
+        },
+        "categorical_event_attributes": {
+            "Diagnose": 0.1,
+            "DiagnosticArtAstrup": 0.005,
+            "DiagnosticBlood": 0.005,
+            "DiagnosticECG": 0.005,
+            "DiagnosticIC": 0.005,
+            "DiagnosticLacticAcid": 0.005,
+            "DiagnosticLiquor": 0.005,
+            "DiagnosticOther": 0.005,
+            "DiagnosticSputum": 0.005,
+            "DiagnosticUrinaryCulture": 0.005,
+            "DiagnosticUrinarySediment": 0.005,
+            "DiagnosticXthorax": 0.005,
+            "DisfuncOrg": 0.005,
+            "Hypotensie": 0.005,
+            "Hypoxie": 0.005,
+            "InfectionSuspected": 0.005,
+            "Infusion": 0.005,
+            "Oligurie": 0.005,
+            "SIRSCritHeartRate": 0.005,
+            "SIRSCritLeucos": 0.005,
+            "SIRSCritTachypnea": 0.005,
+            "SIRSCritTemperature": 0.005,
+            "SIRSCriteria2OrMore": 0.005
+        }
+    },
+    "just_prediction": true,
+    "output_attributes": {
+        "categorical": [
+            "org:group"
+        ]
+    },
+    "evaluation": {
+        "training_size": 200,
+        "testing_size": 200,
+        "training_periods": [
+            {
+                "start": "2013-07-01",
+                "end": "2014-06-30"
+            },
+            {
+                "start": "2013-08-01",
+                "end": "2014-07-31"
+            },
+            {
+                "start": "2013-09-01",
+                "end": "2014-08-31"
+            },
+            {
+                "start": "2013-10-01",
+                "end": "2014-09-30"
+            },
+            {
+                "start": "2013-11-01",
+                "end": "2014-10-31"
+            },
+            {
+                "start": "2013-12-01",
+                "end": "2014-11-30"
+            },
+            {
+                "start": "2014-01-01",
+                "end": "2014-12-31"
+            },
+            {
+                "start": "2014-02-01",
+                "end": "2015-01-31"
+            },
+            {
+                "start": "2014-03-01",
+                "end": "2015-02-28"
+            },
+            {
+                "start": "2014-04-01",
+                "end": "2015-03-31"
+            }
+        ]
+    }
+}

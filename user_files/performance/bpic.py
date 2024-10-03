@@ -7,7 +7,11 @@ def performance(original_df: pd.DataFrame, normalized_df: pd.DataFrame, normaliz
         return 0
     index_o_accepted = original_df[activity_col].eq(o_accepted).idxmax()
     offer_id = original_df['OfferID'].loc[index_o_accepted]
-    offered_amount = normalized_df[(normalized_df[activity_col] == 'O_Create Offer') & (normalized_df['EventID'] == offer_id)]['OfferedAmount'].iloc[0]
-    if not (0 <= offered_amount <= 1):
-        return ValueError("Performance must be within the [0,1] range.")
-    return offered_amount
+    offer = normalized_df[(normalized_df[activity_col] == 'O_Create Offer') & (normalized_df['EventID'] == offer_id)].iloc[0]
+    performance = 1 - abs(offer['OfferedAmount'] - (offer["CreditScore"] + offer["case:RequestedAmount"]) / 2)
+    if not (0 <= performance <= 1):
+        print(offer['OfferedAmount'])
+        print(offer["CreditScore"])
+        print(offer["case:RequestedAmount"])
+        raise ValueError(f"Performance={performance} not within the [0,1] range.")
+    return performance

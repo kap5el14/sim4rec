@@ -20,7 +20,7 @@ class RecommendationCandidate:
     def generate_candidates(cls, peer_df: pd.DataFrame, df: pd.DataFrame, sim: float):
         common = Common.instance
         complete_peer_df = common.train_df[common.train_df[common.conf.event_log_specs.case_id] == peer_df[common.conf.event_log_specs.case_id].iloc[0]]
-        peer_future_df = complete_peer_df[len(peer_df):]
+        peer_future_df = complete_peer_df.iloc[len(peer_df):]
         last_values = df[[TIME_FROM_TRACE_START, INDEX]].iloc[-1]
         peer_future_df_filtered = peer_future_df[[TIME_FROM_TRACE_START, INDEX]]
         difference_df = peer_future_df_filtered - last_values
@@ -55,6 +55,7 @@ class Recommendation:
     kpi_dict: dict[str, float] = field(init=False, default=None)
     proximity: float = field(init=False, default=None)
     coherence: float = field(init=False, default=None)
+    score: float = field(init=False, default=None)
     normalized_event: pd.Series = field(init=False, default=None)
 
     def __eq__(self, value: 'Recommendation') -> bool:
@@ -64,13 +65,15 @@ class Recommendation:
         return hash(self.id)
     
     def __str__(self) -> str:
-        return f"peers: {self.peers}\nsupport: {self.support}\nproximity: {self.proximity}\nKPI: {self.kpi}\nKPI_dict: {self.kpi_dict}\n\n{self.event}\n\n"
+        return f"score: {self.score}, peers: {self.peers}\nsupport: {self.support}\nproximity: {self.proximity} coherence: {self.coherence}\nKPI: {self.kpi}\nKPI_dict: {self.kpi_dict}\n\n{self.event}\n\n"
     
     def __dict__(self) -> dict:
         result = {
+            "score": self.score,
             "peers": list(self.peers),
             "support": self.support,
             "proximity": self.proximity,
+            "coherence": self.coherence,
             "KPI": self.kpi,
             "component KPIs:": self.kpi_dict,
             "event": {k: str(v) for k, v in self.event.to_dict().items()}
@@ -126,20 +129,14 @@ class Recommendation:
             for j, can2 in enumerate(self.cluster):
                 if j > i:
                     sims.append(similarity_between_events(can1.row, can2.row))
-        self.coherence = np.mean(sims)
-    
-    def score(self):
-        return self.kpi * (self.support + self.proximity + self.coherence)
-    
-    def dominates(self, rec: 'Recommendation'):
-        not_worse = self.support >= rec.support and self.kpi >= rec.kpi and self.proximity >= rec.proximity and self.coherence >= rec.coherence
-        better = self.support > rec.support or self.kpi > rec.kpi or self.proximity > rec.proximity or self.coherence > rec.coherence
-        return not_worse and better
+        self.coherence = np.mean(sims) if len(sims) else 1
+        #self.score = max(0, min(1, np.power(self.kpi * self.support * self.proximity * self.coherence, 0.25)))
+        #self.score = self.proximity
+        self.score = 0.5 * self.proximity + 0.25 * self.kpi + 0.20 * self.support + 0.05 * self.coherence
 
     @classmethod
     def generate_recommendations(cls, candidates: list[RecommendationCandidate]) -> list['Recommendation']:
         common = Common.instance
-        clusters: list[set[RecommendationCandidate]] = []
         all_peers = set()
         n = len(candidates)
         distance_matrix = np.zeros((n, n))
@@ -148,40 +145,13 @@ class Recommendation:
             for j in range(i + 1, n):
                 if i != j:
                     distance_matrix[j, i] = distance_matrix[i, j] = 1 - similarity_between_events(candidates[i].row, candidates[j].row)
-        clustering = hdbscan.HDBSCAN(min_cluster_size=2, metric='precomputed')
-        if len(candidates) > 1:
-            cluster_labels = clustering.fit_predict(distance_matrix)
-            clusters = {}
-            no_labels = len(set(cluster_labels))
-            for idx, label in enumerate(cluster_labels):
-                if label == -1:
-                    clusters[no_labels] = [candidates[idx]]
-                    no_labels += 1
-                    continue
-                if label not in clusters:
-                    clusters[label] = []
-                clusters[label].append(candidates[idx])
-            recommendations = [Recommendation(cluster=cluster, all_peers=all_peers, id=rec_index) for rec_index, cluster in enumerate(clusters.values())]
-        else:
-            recommendations = [Recommendation(cluster=candidates, all_peers=all_peers, id=0)]
-        print(f'recommendations before: {len(recommendations)}\n')
-        pareto: set[Recommendation] = set()
-        for rec1 in recommendations:
-            dominated = set()
-            flag = False
-            for rec2 in pareto:
-                if rec1.dominates(rec2):
-                    dominated.add(rec2)
-                elif rec2.dominates(rec1):
-                    flag = True
-                    break
-            pareto = pareto.difference(dominated)
-            if not flag:
-                pareto.add(rec1)
-        print(f'recommendations after: {len(pareto)}\n')
-        return list(pareto)
+        clusters = {can.row[common.conf.event_log_specs.activity]: set() for can in candidates}
+        for can in candidates:
+            clusters[can.row[common.conf.event_log_specs.activity]].add(can)
+        recommendations = [Recommendation(cluster=cluster, all_peers=all_peers, id=rec_index) for rec_index, cluster in enumerate(clusters.values())]
+        return list(sorted(recommendations, key=lambda rec: rec.score, reverse=True))
 
-def make_recommendation(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame) -> Recommendation:
+def make_recommendation(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame, all=False) -> Recommendation:
     n = len(dfs)
     candidates_map = {}
     average_sim = np.mean([sim for sim, df in dfs])
@@ -194,4 +164,6 @@ def make_recommendation(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame)
     if candidates:
         recommendations = Recommendation.generate_recommendations(candidates=candidates)
         if recommendations:
+            if all:
+                return recommendations
             return recommendations[0]

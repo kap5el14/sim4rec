@@ -2,23 +2,34 @@
     "case_id": "case:concept:name",
     "activity": "concept:name",
     "timestamp": "time:timestamp",
+    "relevant_activities": [
+        "O_Create Offer",
+        "A_Accepted",
+        "A_Complete",
+        "O_Cancelled",
+        "A_Cancelled",
+        "O_Refused",
+        "W_Assess potential fraud",
+        "W_Personal Loan collection",
+        "A_Denied",
+        "O_Returned",
+        "O_Accepted"
+    ],
     "similarity_weights": {
-        "activity": 0.1,
-        "timestamp": 0.1,
-        "numerical_event_attributes": {
-            "FirstWithdrawalAmount": 0.05,
-            "NumberOfTerms": 0.05,
-            "MonthlyCost": 0.05,
-            "CreditScore": 0.15,
-            "OfferedAmount": 0.25
-        },
+        "activity": 0.3,
         "trace_length": 0.1,
+        "numerical_event_attributes": {
+            "NumberOfTerms": 0.01,
+            "MonthlyCost": 0.01,
+            "CreditScore": 0.01,
+            "OfferedAmount": 0.37
+        },
         "numerical_trace_attributes": {
             "case:RequestedAmount": 0.1
         },
         "categorical_trace_attributes": {
-            "case:LoanGoal": 0.025,
-            "case:ApplicationType": 0.025
+            "case:LoanGoal": 0.05,
+            "case:ApplicationType": 0.05
         }
     },
     "output_attributes": {

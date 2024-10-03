@@ -16,7 +16,7 @@ def generate_evaluation_datasets(conf: Configuration) -> list[Common]:
         train_case_ids = random.sample(list(train_case_ids), min(conf.evaluation_datasets_format.training_size, len(train_case_ids)))
         train_df = conf.df[conf.df[conf.event_log_specs.case_id].isin(train_case_ids)]
         print(f"\n{len(train_case_ids)} traces in training set {i}.")
-        test_case_ids = trace_boundaries[(trace_boundaries[TRACE_START] < end) & (trace_boundaries[TRACE_END] > end)].index
+        test_case_ids = trace_boundaries[(trace_boundaries[TRACE_START] <= end) & (trace_boundaries[TRACE_END] > end)].index
         test_case_ids = random.sample(list(test_case_ids), min(conf.evaluation_datasets_format.testing_size, len(test_case_ids)))
         test_df = conf.df[conf.df[conf.event_log_specs.case_id].isin(test_case_ids)]
         print(f"{len(test_case_ids)} traces in testing set {i}.")

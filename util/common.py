@@ -7,7 +7,7 @@ from typing import Callable
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.manifold import MDS
-from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import AgglomerativeClustering, KMeans
 import hdbscan
 import random
 import dill
@@ -104,6 +104,7 @@ class Configuration:
     similarity_weights: SimilarityWeights = field(init=False, default=None)
     performance_weights: PerformanceWeights = field(init=False, default=None)
     custom_performance_function: Callable[[pd.DataFrame, pd.DataFrame, pd.Series], float] = field(init=False, default=None)
+    just_prediction: bool = field(init=False, default=False)
     output_format: OutputFormat = field(init=False, default=None)
     evaluation_datasets_format: EvaluationDatasetsFormat = field(init=False, default=None)
     def __init__(self, name):
@@ -125,6 +126,9 @@ class Configuration:
             )
             log_path = os.path.join('user_files', 'logs', f'{name}.csv')
             self.df = pd.read_csv(log_path)
+            relevant_activities = try_read(['relevant_activities'])
+            if relevant_activities:
+                self.df = self.df[self.df[self.event_log_specs.activity].isin(relevant_activities)]
             self.df[self.event_log_specs.timestamp] = pd.to_datetime(self.df[self.event_log_specs.timestamp], format='mixed')
             self.df.sort_values(by=[self.event_log_specs.case_id, self.event_log_specs.timestamp], inplace=True)
             self.similarity_weights = SimilarityWeights(
@@ -144,15 +148,18 @@ class Configuration:
                 numerical_event_attributes=try_read(['performance_weights', 'numerical_event_attributes'], default={})
                 )
             if 'performance_weights' not in config:
-                path = os.path.join('user_files', 'performance', f'{name}.py')
-                if not os.path.isfile(path):
-                    raise ModuleNotFoundError(f"{path} not found. The user has to specify either the performance weights or a custom performance function.")
-                spec = importlib.util.spec_from_file_location("custom_performance_module", path)
-                custom_performance_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(custom_performance_module)
-                if not hasattr(custom_performance_module, 'performance'):
-                    raise ValueError(f"Function 'performance' not found in {path}")
-                self.custom_performance_function = getattr(custom_performance_module, 'performance')
+                if try_read(['just_prediction']):
+                    self.just_prediction = True
+                else:
+                    path = os.path.join('user_files', 'performance', f'{name}.py')
+                    if not os.path.isfile(path):
+                        raise ModuleNotFoundError(f"{path} not found. The user has to specify either the performance weights or a custom performance function.")
+                    spec = importlib.util.spec_from_file_location("custom_performance_module", path)
+                    custom_performance_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(custom_performance_module)
+                    if not hasattr(custom_performance_module, 'performance'):
+                        raise ValueError(f"Function 'performance' not found in {path}")
+                    self.custom_performance_function = getattr(custom_performance_module, 'performance')
             self.output_format = OutputFormat(
                 numerical_attributes=try_read(['output_attributes', 'numerical'], default=[]),
                 categorical_attributes=try_read(['output_attributes', 'categorical'], default=[]) + [self.event_log_specs.activity],
@@ -185,6 +192,12 @@ class Common:
     @classmethod
     def set_instance(cls, instance: 'Common'):
         cls.instance = instance
+
+    def __str__(self):
+        return str(self.training_period)
+    
+    def __eq__(self, other: 'Common'):
+        return self.training_period == other.training_period
 
     def __post_init__(self):
         def create_add_attributes():

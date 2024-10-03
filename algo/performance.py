@@ -1,9 +1,44 @@
-from util.common import CUMAVG, CUMSUM, TRACE_DURATION, TRACE_LENGTH, Common, pd
+from util.common import *
 
 performance_dict = {}
+perc_values = None
+
+def normalize(tup: tuple[dict[str, float], float]) -> tuple[dict[str, float], float]:
+    (kpi_dict, performance) = tup
+    global perc_values
+    if perc_values is None:
+        return kpi_dict, performance
+    if performance <= perc_values[0]:
+        return kpi_dict, 0.0
+    elif performance >= perc_values[-1]:
+        return kpi_dict, 1.0
+    for i in range(1, len(perc_values)):
+        if performance <= perc_values[i]:
+            lower_bound = perc_values[i-1]
+            upper_bound = perc_values[i]
+            if upper_bound == lower_bound:
+                return kpi_dict, (i-1)/10 + 0.05
+            else:
+                return kpi_dict, (i-1)/10 + (performance - lower_bound) / (upper_bound - lower_bound) * 0.1
+    return performance
+
+def create_kpi_normalizer(commons: list[Common]):
+    global perc_values, performance_dict
+    for common in commons:
+        if common.conf.just_prediction:
+            return
+        Common.set_instance(common)
+        for _, df in common.train_df.groupby(common.conf.event_log_specs.case_id):
+            compute_kpi(df=df)
+    perc_values = np.percentile([tup[1] for tup in performance_dict.values()], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+    performance_dict = {k: normalize(v) for k, v in performance_dict.items()}
+
 
 def compute_kpi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
+    global performance_dict
     common = Common.instance
+    if common.conf.just_prediction:
+        return {}, 0.5
     case_id = df[common.conf.event_log_specs.case_id].iloc[0]
     if case_id in performance_dict:
         return performance_dict[case_id]
@@ -12,11 +47,11 @@ def compute_kpi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
     normalized_last_row = common.future_df[common.future_df[common.conf.event_log_specs.case_id] == df[common.conf.event_log_specs.case_id].iloc[0]].iloc[0]
     if common.conf.custom_performance_function:
         original_df = common.conf.df.loc[df.index]
-        custom_performance = common.conf.custom_performance_function(original_df, df, normalized_last_row)
-        custom_performance = max(0, min(1, custom_performance))
-        kpi_dict['custom'] = custom_performance
-        performance_dict[case_id] = (kpi_dict, custom_performance)
-        return kpi_dict, custom_performance
+        performance = common.conf.custom_performance_function(original_df, df, normalized_last_row)
+        performance = max(0, min(1, performance))
+        kpi_dict['custom'] = performance
+        performance_dict[case_id] = (kpi_dict, performance)
+        return normalize((kpi_dict, performance))
     if common.conf.performance_weights.trace_length:
         kpi_dict[TRACE_LENGTH] = 1 - normalized_last_row[TRACE_LENGTH]
         kpi_weights[TRACE_LENGTH] = common.conf.performance_weights.trace_length
@@ -54,4 +89,4 @@ def compute_kpi(df: pd.DataFrame) -> tuple[dict[str, float], float]:
             kpi_weights[name] = v2[2]
     performance = max(0, min(1, sum([kpi_dict[k] * kpi_weights[k] for k in kpi_dict.keys()])))
     performance_dict[case_id] = (kpi_dict, performance)
-    return kpi_dict, performance
+    return normalize((kpi_dict, performance))

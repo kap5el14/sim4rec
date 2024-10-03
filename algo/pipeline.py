@@ -20,7 +20,7 @@ class VisualizationException(Exception):
     def __init__(self, message):
         super().__init__(f"Couldn't visualize recommendations due to the following exception:\n{message}")
 
-def recommendation_pipeline(df: pd.DataFrame, interactive=True):
+def recommendation_pipeline(df: pd.DataFrame, interactive=True, all=False):
     common = Common.instance
     try:
         df.columns = df.columns.str.strip()
@@ -30,10 +30,18 @@ def recommendation_pipeline(df: pd.DataFrame, interactive=True):
         raise PreprocessingException(str(e))
     try:
         peers = sample_peers(df)
+        for p in peers:
+            print(p[1]['event'])
+            print()
+
+        print(df['event'])
+        print()
     except Exception as e:
         raise SamplingException(str(e))
     try:
-        recommendation = make_recommendation(dfs=peers, df=df)
+        recommendation = make_recommendation(dfs=peers, df=df, all=all)
+        print(recommendation)
+        print()
         if not recommendation:
             return
         if interactive:

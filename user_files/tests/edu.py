@@ -131,21 +131,21 @@ def evaluate(commons: list[Common]):
         Common.set_instance(common)
         print(f'Training period: {common.training_period}')
         activity_col = common.conf.event_log_specs.activity
-        case_ids = common.test_df[common.conf.event_log_specs.case_id].unique()[:5]
+        case_ids = common.test_df[common.conf.event_log_specs.case_id].unique()
         for course in list(common.conf.df[activity_col]):
             if course not in recommendation_counts:
                 recommendation_counts[course] = 0
-        for case_id in tqdm.tqdm(case_ids, 'Testing trace'):
+        for case_id in tqdm.tqdm(case_ids, 'Evaluating traces'):
             full_original_df = common.conf.df[common.conf.df[common.conf.event_log_specs.case_id] == case_id]
             full_normalized_df = common.test_df[common.test_df[common.conf.event_log_specs.case_id] == case_id]
             past_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] <= common.training_period[1]]
             past_normalized_df = full_normalized_df[full_normalized_df.index.isin(past_original_df.index)]
             future_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] > common.training_period[1]]
             recommendation = recommendation_pipeline(df=past_normalized_df, interactive=False)
-            course = recommendation.event[activity_col]
             if not recommendation:
                 no_recommendation.append(True)
                 continue
+            course = recommendation.event[activity_col]
             no_recommendation.append(False)
             already_passed.append('Bestanden' in list(past_normalized_df[past_normalized_df[activity_col].isin([recommendation.event[activity_col]])]['state']))
             not_passed.append(recommendation.event['state'] != 'Bestanden')
