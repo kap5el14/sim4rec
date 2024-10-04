@@ -46,21 +46,27 @@ def average_precision(list1, list2):
     return len(s1.intersection(s2)) / len(s1.union(s2))
 
 def evaluate(commons: list[Common]):
+    used_case_ids = set()
     for common in tqdm.tqdm(commons, 'Evaluating training-testing set pairs'):
         synchronize(common)
         print(f'Training period: {common.training_period}')
         activity_col = common.conf.event_log_specs.activity
         case_ids = common.test_df[common.conf.event_log_specs.case_id].unique()
         for case_id in tqdm.tqdm(case_ids, 'Evaluating traces'):
+            if case_id in used_case_ids:
+                continue
+            used_case_ids.add(case_id)
             full_original_df = common.conf.df[common.conf.df[common.conf.event_log_specs.case_id] == case_id]
             full_normalized_df = common.test_df[common.test_df[common.conf.event_log_specs.case_id] == case_id]
-            past_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] <= common.training_period[1]]
-            print(KPIUtils.instance.compute_kpi(full_normalized_df)[1])
-            input()
+            if len(full_original_df) == 1:
+                continue
+            cutting_point = random.sample(range(1, len(full_original_df)), 1)[0]
+            past_original_df = full_original_df.iloc[:cutting_point]
+
             if str(past_original_df[activity_col].iloc[-1]).startswith('Release'):
                 continue
             past_normalized_df = full_normalized_df[full_normalized_df.index.isin(past_original_df.index)]
-            future_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] > common.training_period[1]]
+            future_original_df = full_original_df[cutting_point:]
             actual_activities = list(future_original_df[(future_original_df[common.conf.event_log_specs.timestamp] - past_original_df[common.conf.event_log_specs.timestamp].iloc[-1]) <= pd.Timedelta(days=2)][common.conf.event_log_specs.activity])
             actual_activities = actual_activities[:min(len(actual_activities), 3)]
             if not actual_activities:
@@ -73,7 +79,7 @@ def evaluate(commons: list[Common]):
             recommendation = recommendations[0]
             no_recommendation.append(False)
             recommended_activities = [r.event[common.conf.event_log_specs.activity] for r in recommendations]
-            recommended_activities = recommended_activities[:min(len(recommended_activities), 1)]
+            recommended_activities = recommended_activities[:min(len(recommended_activities), 2)]
 
             print(f'recommended: {recommended_activities}')
             print(f'actual: {actual_activities}')

@@ -96,6 +96,7 @@ class EvaluationDatasetsFormat:
     training_size: int
     testing_size: int
     training_periods: list
+    starts_after: bool
 
     def __post_init__(self):
         new_training_periods = []
@@ -189,7 +190,8 @@ class Configuration:
             self.evaluation_datasets_format = EvaluationDatasetsFormat(
                 training_size=try_read(['evaluation', 'training_size'], default=math.inf),
                 testing_size=try_read(['evaluation', 'testing_size'], default=math.inf),
-                training_periods=try_read(['evaluation', 'training_periods'], default=[])
+                training_periods=try_read(['evaluation', 'training_periods'], default=[]),
+                starts_after=try_read(['evaluation', 'starts_after'], default=[])
             )
 
     @staticmethod
