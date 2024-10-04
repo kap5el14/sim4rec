@@ -48,8 +48,8 @@ class SimilarityWeights:
     event: float = field(init=False, default=None)
 
     def __post_init__(self):
-        self.trace = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_trace_attributes.values()) + list(self.categorical_trace_attributes.values())) + sum(list(self.numerical_event_attributes.values())) / 2 + self.trace_length
-        self.event = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_event_attributes.values())) / 2 + sum(list(self.categorical_event_attributes.values()))
+        self.trace = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_trace_attributes.values()) + list(self.categorical_trace_attributes.values())) + sum(list(self.numerical_event_attributes.values())) / 2 + self.trace_length + sum(list(self.categorical_event_attributes.values())) / 2
+        self.event = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_event_attributes.values())) / 2 + sum(list(self.categorical_event_attributes.values())) / 2
         if not (0.99 <= self.trace + self.event <= 1.01):
             raise ValueError(f"Similarity weights sum up to {self.trace + self.event:.2f} != 1!")
 
@@ -70,6 +70,14 @@ class PerformanceWeights:
             res.append(f'{attr}{MW_SUM}')
             res.append(f'{attr}{MW_AVG}')
         return res
+    
+@dataclass
+class OptimizationGoals:
+    performance: float
+    support: float
+    novelty: float
+    timeliness: float
+    coherence: float
     
 @dataclass
 class OutputFormat:
@@ -107,6 +115,9 @@ class Configuration:
     just_prediction: bool = field(init=False, default=False)
     output_format: OutputFormat = field(init=False, default=None)
     evaluation_datasets_format: EvaluationDatasetsFormat = field(init=False, default=None)
+    optimization_goals: OptimizationGoals = field(init=False, default=None)
+    horizon: int = field(init=False, default=None)
+    peer_group_size: int = field(init=False, default=None)
     def __init__(self, name):
         self.name = name
         with open(os.path.join('user_files', 'confs', f"{name}.json"), 'r') as conf_file:
@@ -160,6 +171,15 @@ class Configuration:
                     if not hasattr(custom_performance_module, 'performance'):
                         raise ValueError(f"Function 'performance' not found in {path}")
                     self.custom_performance_function = getattr(custom_performance_module, 'performance')
+            self.optimization_goals = OptimizationGoals(
+                performance=try_read(['optimize', 'performance'], default=0.3),
+                support=try_read(['optimize', 'support'], default=0.3),
+                novelty=try_read(['optimize', 'novelty'], default=0.1),
+                timeliness=try_read(['optimize', 'timeliness'], default=0.2),
+                coherence=try_read(['optimize', 'coherence'], default=0.2),
+            )
+            self.horizon = try_read(['horizon'], default=math.inf)
+            self.peer_group_size = try_read(['peer_group_size'], default=10)
             self.output_format = OutputFormat(
                 numerical_attributes=try_read(['output_attributes', 'numerical'], default=[]),
                 categorical_attributes=try_read(['output_attributes', 'categorical'], default=[]) + [self.event_log_specs.activity],
@@ -346,6 +366,10 @@ class Common:
         with open(path, 'rb') as f:
             return dill.load(f)
 
-    def get_original(self, df) -> pd.DataFrame:
-        return self.conf.df[self.conf.df[self.conf.event_log_specs.case_id] == df[self.conf.event_log_specs.case_id].iloc[0]].iloc[:len(df)]
+    def get_original(self, df) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        complete = self.conf.df[self.conf.df[self.conf.event_log_specs.case_id] == df[self.conf.event_log_specs.case_id].iloc[0]]
+        past = complete.iloc[:len(df)]
+        future = complete.iloc[len(df):]
+        return complete, past, future
 
+    

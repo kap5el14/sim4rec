@@ -108,7 +108,7 @@ def evaluate(commons: list[Common]):
             credit_score_times_requested_amount_scores.append(accepted_original_offer['CreditScore'] * accepted_original_offer["case:RequestedAmount"])
             recommended_amounts.append(recommendation.event['OfferedAmount'])
             actual_amounts.append(accepted_original_offer['OfferedAmount'])
-            ratios_kpi.append(recommendation.kpi / performance)
+            ratios_kpi.append(recommendation.peer_kpi / performance)
     plot_rec_statistics()
     plot_correlation()
     plot_ratios()

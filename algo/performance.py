@@ -3,32 +3,34 @@ from common import *
 class KPIUtils:
     instance: 'KPIUtils' = None
     def __init__(self, common: Common):
+        self.stats_computed = False
         self.performance_dict = {}
-        self.perc_values = None
         if common.conf.just_prediction:
             return
         for _, df in common.train_df.groupby(common.conf.event_log_specs.case_id):
             self.compute_kpi(df=df)
-        self.perc_values = np.percentile([tup[1] for tup in self.performance_dict.values()], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
-        self.performance_dict = {k: self.normalize(v) for k, v in self.performance_dict.items()}
+        self.perc_values = np.percentile([v[1] for v in self.performance_dict.values()], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+        self.stats_computed = True
 
     def normalize(self, tup: tuple[dict[str, float], float]) -> tuple[dict[str, float], float]:
         (kpi_dict, performance) = tup
-        if self.perc_values is None:
-            return kpi_dict, performance
-        if performance <= self.perc_values[0]:
-            return kpi_dict, 0.0
-        elif performance >= self.perc_values[-1]:
-            return kpi_dict, 1.0
-        for i in range(1, len(self.perc_values)):
-            if performance <= self.perc_values[i]:
-                lower_bound = self.perc_values[i-1]
-                upper_bound = self.perc_values[i]
-                if upper_bound == lower_bound:
-                    return kpi_dict, (i-1)/10 + 0.05
-                else:
-                    return kpi_dict, (i-1)/10 + (performance - lower_bound) / (upper_bound - lower_bound) * 0.1
-        return kpi_dict, performance
+        if not self.stats_computed:
+            return kpi_dict, max(0, min(1, performance))
+        def _normalize():
+            if performance <= self.perc_values[0]:
+                return 0.0
+            elif performance >= self.perc_values[-1]:
+                return 1.0
+            for i in range(1, len(self.perc_values)):
+                if performance <= self.perc_values[i]:
+                    lower_bound = self.perc_values[i-1]
+                    upper_bound = self.perc_values[i]
+                    if upper_bound == lower_bound:
+                        return (i-1)/10 + 0.05
+                    else:
+                        return (i-1)/10 + (performance - lower_bound) / (upper_bound - lower_bound) * 0.1
+            return 0.5
+        return kpi_dict, max(0, min(1, _normalize()))
 
     def compute_kpi(self, df: pd.DataFrame) -> tuple[dict[str, float], float]:
         common = Common.instance
@@ -41,7 +43,7 @@ class KPIUtils:
         kpi_weights = {}
         normalized_last_row = common.future_df[common.future_df[common.conf.event_log_specs.case_id] == df[common.conf.event_log_specs.case_id].iloc[0]].iloc[0]
         if common.conf.custom_performance_function:
-            original_df = common.get_original(df)
+            original_df = common.get_original(df)[0]
             performance = common.conf.custom_performance_function(original_df, df, normalized_last_row)
             performance = max(0, min(1, performance))
             self.performance_dict[case_id] = (kpi_dict, performance)

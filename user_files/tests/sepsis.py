@@ -6,9 +6,10 @@ from util.synchronize import synchronize
 
 plot_dir_path = os.path.join('evaluation_results', 'sepsis')
 no_recommendation = []
-performances1 = []
-performances2 = []
 recommended_activities = {}
+maps = []
+performances = []
+t_test_data = []
 
 def plot_rec_statistics():
     fractions = [
@@ -23,31 +24,26 @@ def plot_rec_statistics():
         bar_plot.text(i, v, f'{round(v * 100)}%', ha='center', va='bottom')
     plt.savefig(os.path.join(plot_dir_path, 'rec_statistics.svg'))
 
-def plot_t_test1():
-    t_stat, p_value = stats.ttest_ind(scores1, performances1)
+def plot_correlation():
+    pearson_corr, _ = stats.pearsonr(maps, performances)
+    spearman_corr, _ = stats.spearmanr(maps, performances)
     plt.figure(figsize=(10, 6))
-    sns.kdeplot(scores1, label='strength of recommendation', color='green', shade=True)
-    sns.kdeplot(performances1, label='performance', color='red', shade=True)
-    plt.title("Released")
-    plt.text(1.05, 0.5, f"T-statistic: {t_stat:.4f}\nP-value: {p_value:.4f}", ha='left', va='center', fontsize=10, rotation=90, transform=plt.gca().transAxes)
-    plt.xlabel('performance')
-    plt.ylabel('density')
+    sns.scatterplot(x=maps, y=performances, label=f"r1 = {pearson_corr:.2f}, r2 = {spearman_corr}, {len(maps)} pairs", palette=['blue'])
+    sns.regplot(x=maps, y=performances, scatter=False)
+    plt.title('Correlation', fontsize=14)
+    plt.xlabel('mean average precision', fontsize=12)
+    plt.ylabel('performance', fontsize=12)
     plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(plot_dir_path, 't_test1.svg'))
+    plt.savefig(os.path.join(plot_dir_path, 'correlation.svg'))
 
-def plot_t_test2():
-    t_stat, p_value = stats.ttest_ind(performances1, performances2)
-    plt.figure(figsize=(10, 6))
-    sns.kdeplot(performances1, label='followed', color='green', shade=True)
-    sns.kdeplot(performances2, label='did not follow', color='red', shade=True)
-    plt.title("Not Released")
-    plt.text(1.05, 0.5, f"T-statistic: {t_stat:.4f}\nP-value: {p_value:.4f}", ha='left', va='center', fontsize=10, rotation=90, transform=plt.gca().transAxes)
-    plt.xlabel('performance')
-    plt.ylabel('density')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(plot_dir_path, 't_test2.svg'))
+def average_precision(list1, list2):
+    if not list1:
+        return 0
+    if not list2:
+        return None
+    s1 = set(list1)
+    s2 = set(list2)
+    return len(s1.intersection(s2)) / len(s1.union(s2))
 
 def evaluate(commons: list[Common]):
     for common in tqdm.tqdm(commons, 'Evaluating training-testing set pairs'):
@@ -59,28 +55,53 @@ def evaluate(commons: list[Common]):
             full_original_df = common.conf.df[common.conf.df[common.conf.event_log_specs.case_id] == case_id]
             full_normalized_df = common.test_df[common.test_df[common.conf.event_log_specs.case_id] == case_id]
             past_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] <= common.training_period[1]]
+            print(KPIUtils.instance.compute_kpi(full_normalized_df)[1])
+            input()
             if str(past_original_df[activity_col].iloc[-1]).startswith('Release'):
                 continue
             past_normalized_df = full_normalized_df[full_normalized_df.index.isin(past_original_df.index)]
             future_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] > common.training_period[1]]
+            actual_activities = list(future_original_df[(future_original_df[common.conf.event_log_specs.timestamp] - past_original_df[common.conf.event_log_specs.timestamp].iloc[-1]) <= pd.Timedelta(days=2)][common.conf.event_log_specs.activity])
+            actual_activities = actual_activities[:min(len(actual_activities), 3)]
+            if not actual_activities:
+                continue
             performance = KPIUtils.instance.compute_kpi(full_normalized_df)[1]
             recommendations = Pipeline(df=past_normalized_df).get_all_recommendations(interactive=True)
-            recommendation = recommendations[0]
-            if not recommendation:
+            if not recommendations:
                 no_recommendation.append(True)
                 continue
+            recommendation = recommendations[0]
             no_recommendation.append(False)
-            recommended_activity = recommendation.event[common.conf.event_log_specs.activity]
-            actual_activities = future_original_df[(future_original_df[common.conf.event_log_specs.timestamp] - past_original_df[common.conf.event_log_specs.timestamp].iloc[-1]) <= pd.Timedelta(days=14)][common.conf.event_log_specs.activity].values
-            print(f'recommended: {recommended_activity}')
-            print(f'actual: {actual_activities}')
-            if recommended_activity in actual_activities:
-                performances1.append(performance)
-            else:
-                performances2.append(performance)
-            print(stats.ttest_ind(performances1, performances2))
-            input("Press enter...")
+            recommended_activities = [r.event[common.conf.event_log_specs.activity] for r in recommendations]
+            recommended_activities = recommended_activities[:min(len(recommended_activities), 1)]
 
-    plot_rec_statistics()
-    plot_t_test1()
-    plot_t_test2()
+            print(f'recommended: {recommended_activities}')
+            print(f'actual: {actual_activities}')
+            map_val = average_precision(recommended_activities, actual_activities)
+            if map_val is None:
+                continue
+            print(f'map: {map_val}, performance: {performance}')
+            maps.append(map_val)
+            performances.append(performance)
+            try:
+                print(f'{stats.spearmanr(maps, performances)}')
+                print(f'{stats.pearsonr(maps, performances)}')
+            except Exception as e:
+                pass
+            for act in recommended_activities:
+                if act in actual_activities:
+                    t_test_data.append((True, performance))
+                    break
+            if not set(recommended_activities).intersection(set(actual_activities)):
+                t_test_data.append((False, performance))
+            followers = [performance for followed, performance in t_test_data if followed]
+            nonfollowers = [performance for followed, performance in t_test_data if not followed]
+            print(f'{len(followers)} followers, {len(nonfollowers)} non-followers')
+            try:
+                print(stats.mannwhitneyu(followers, nonfollowers))
+            except Exception as e:
+                pass
+
+            
+    
+    plot_correlation()

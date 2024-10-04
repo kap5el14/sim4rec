@@ -20,8 +20,10 @@ class Pipeline:
         if n is None:
             n = len(self.recommendations)
         for i, p in enumerate(self.peers):
-           result += f'Peer no. {i}: \n{common.get_original(p[1])[[common.conf.event_log_specs.case_id, common.conf.event_log_specs.activity, common.conf.event_log_specs.timestamp]]}\n\n'
-        result += f'Recommendee:\n{common.get_original(self.df)[[common.conf.event_log_specs.case_id, common.conf.event_log_specs.activity, common.conf.event_log_specs.timestamp]]}\n\n'
+           complete, past, future = common.get_original(p[1])
+           result += f'Peer no. {i}: \nPast:\n{past[[common.conf.event_log_specs.case_id, common.conf.event_log_specs.activity, common.conf.event_log_specs.timestamp]]}\nFuture:\n{future[[common.conf.event_log_specs.case_id, common.conf.event_log_specs.activity, common.conf.event_log_specs.timestamp]]}\n\n'
+        complete, past, future = common.get_original(self.df)
+        result += f'Recommendee: \nPast:\n{past[[common.conf.event_log_specs.case_id, common.conf.event_log_specs.activity, common.conf.event_log_specs.timestamp]]}\nFuture:\n{future[[common.conf.event_log_specs.case_id, common.conf.event_log_specs.activity, common.conf.event_log_specs.timestamp]]}\n\n'
         for i, rec in enumerate(self.recommendations[:min(len(self.recommendations), n)]):
             result += f'Recommendation no. {i}:\n{rec}\n'
         return result

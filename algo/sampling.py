@@ -63,15 +63,16 @@ def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=80, log=F
     return result
 
 def third_pass(dfs: list[pd.DataFrame], sample_size=40) -> list[pd.DataFrame]:
+    return dfs[:min(len(dfs), sample_size)]
     return list(sorted(dfs, key=lambda df: KPIUtils.instance.compute_kpi(df=df)[1], reverse=True))[:min(len(dfs), sample_size)]
 
-def fourth_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=20) -> list[tuple[float, pd.DataFrame]]:
+def fourth_pass(dfs: list[pd.DataFrame], df: pd.DataFrame) -> list[tuple[float, pd.DataFrame]]:
     best_dfs: list[tuple[float, pd.DataFrame]] = []
     for peer_df in dfs:
         sim = similarity_between_traces(df, peer_df)
         best_dfs.append((sim, peer_df))
     best_dfs_sorted = sorted(best_dfs, key=lambda x: x[0], reverse=True)
-    return best_dfs_sorted[:min(sample_size, len(best_dfs_sorted))]
+    return best_dfs_sorted[:min(common.conf.peer_group_size, len(best_dfs_sorted))]
 
 def sample_peers(df) -> list[tuple[float, pd.DataFrame]]:
     return fourth_pass(dfs=third_pass(dfs=second_pass(dfs=first_pass(), df=df)), df=df)

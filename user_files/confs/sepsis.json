@@ -3,42 +3,50 @@
     "activity": "event",
     "timestamp": "startTime",
     "similarity_weights": {
-        "activity": 0.19,
-        "timestamp": 0.2,
+        "activity": 0.2,
+        "timestamp": 0.15,
         "trace_length": 0.1,
         "numerical_event_attributes": {
             "CRP": 0.1,
             "Leucocytes": 0.1
         },
         "numerical_trace_attributes": {
-            "Age": 0.1
+            "Age": 0.05
         },
         "categorical_event_attributes": {
-            "Diagnose": 0.1,
-            "DiagnosticArtAstrup": 0.005,
-            "DiagnosticBlood": 0.005,
-            "DiagnosticECG": 0.005,
-            "DiagnosticIC": 0.005,
-            "DiagnosticLacticAcid": 0.005,
-            "DiagnosticLiquor": 0.005,
-            "DiagnosticOther": 0.005,
-            "DiagnosticSputum": 0.005,
-            "DiagnosticUrinaryCulture": 0.005,
-            "DiagnosticUrinarySediment": 0.005,
-            "DiagnosticXthorax": 0.005,
-            "DisfuncOrg": 0.005,
-            "Hypotensie": 0.005,
-            "Hypoxie": 0.005,
-            "InfectionSuspected": 0.005,
-            "Infusion": 0.005,
-            "Oligurie": 0.005,
-            "SIRSCritHeartRate": 0.005,
-            "SIRSCritLeucos": 0.005,
-            "SIRSCritTachypnea": 0.005,
-            "SIRSCritTemperature": 0.005,
-            "SIRSCriteria2OrMore": 0.005
+            "Diagnose": 0.05,
+            "DiagnosticArtAstrup": 0.0,
+            "DiagnosticBlood": 0.0,
+            "DiagnosticECG": 0.0,
+            "DiagnosticIC": 0.0,
+            "DiagnosticLacticAcid": 0.0,
+            "DiagnosticLiquor": 0.0,
+            "DiagnosticOther": 0.0,
+            "DiagnosticSputum": 0.0,
+            "DiagnosticUrinaryCulture": 0.0,
+            "DiagnosticUrinarySediment": 0.0,
+            "DiagnosticXthorax": 0.0,
+            "DisfuncOrg": 0.0,
+            "Hypotensie": 0.05,
+            "Hypoxie": 0.0,
+            "InfectionSuspected": 0.1,
+            "Infusion": 0.0,
+            "Oligurie": 0.0,
+            "SIRSCritHeartRate": 0.0,
+            "SIRSCritLeucos": 0.0,
+            "SIRSCritTachypnea": 0.0,
+            "SIRSCritTemperature": 0.0,
+            "SIRSCriteria2OrMore": 0.1
         }
     },
+    "optimize": {
+        "performance": 0.3,
+        "support": 0.3,
+        "timeliness": 0.1,
+        "novelty": 0.3
+    },
+    "horizon": 3,
+    "peer_group_size": 20,
     "output_attributes": {
         "categorical": [
             "org:group"
@@ -53,24 +61,48 @@
                 "end": "2014-06-30"
             },
             {
+                "start": "2013-07-15",
+                "end": "2014-07-14"
+            },
+            {
                 "start": "2013-08-01",
                 "end": "2014-07-31"
+            },
+            {
+                "start": "2013-08-15",
+                "end": "2014-08-14"
             },
             {
                 "start": "2013-09-01",
                 "end": "2014-08-31"
             },
             {
+                "start": "2013-09-15",
+                "end": "2014-09-14"
+            },
+            {
                 "start": "2013-10-01",
                 "end": "2014-09-30"
+            },
+            {
+                "start": "2013-10-15",
+                "end": "2014-10-14"
             },
             {
                 "start": "2013-11-01",
                 "end": "2014-10-31"
             },
             {
+                "start": "2013-11-15",
+                "end": "2014-11-14"
+            },
+            {
                 "start": "2013-12-01",
                 "end": "2014-11-30"
+            },
+            {
+                "start": "2013-12-15",
+                "end": "2014-12-14"
             },
             {
                 "start": "2014-01-01",
@@ -81,8 +113,16 @@
                 "end": "2015-01-31"
             },
             {
+                "start": "2014-02-15",
+                "end": "2015-02-14"
+            },
+            {
                 "start": "2014-03-01",
                 "end": "2015-02-28"
+            },
+            {
+                "start": "2014-03-15",
+                "end": "2015-03-14"
             },
             {
                 "start": "2014-04-01",

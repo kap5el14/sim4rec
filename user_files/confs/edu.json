@@ -3,32 +3,40 @@
     "activity": "course_name_mode",
     "timestamp": "unitDate",
     "similarity_weights": {
-        "activity": 0.3,
-        "timestamp": 0.1,
+        "activity": 0.2,
+        "trace_length": 0.1,
+        "timestamp": 0.05,
         "numerical_event_attributes": {
             "unitEventGrade": 0.25,
             "rewardAmount": 0.1
         },
         "categorical_event_attributes": {
-            "relative_semester": 0.1,
-            "state": 0.1
+            "relative_semester": 0.05,
+            "state": 0.25
         },
-        "trace_length": 0.05,
         "numerical_trace_attributes": {},
         "categorical_trace_attributes": {}
     },
     "performance_weights": {
-        "trace_length": 0.3,
-        "numerical_trace_attributes": {},
+        "trace_length": 0.1,
+        "numerical_trace_attributes": {
+            "study_duration": ["min", 0.5],
+            "obtainedCredits": ["max", 0.1]
+        },
         "categorical_trace_attributes": {},
         "numerical_event_attributes": {
             "unitEventGrade": [
-                ["min", "avg", 0.25],
-                ["min", "sum", 0.25]
-            ],
-            "rewardAmount": [["max", "sum", 0.2]]
+                ["min", "avg", 0.3]
+            ]
         }
     },
+    "optimize": {
+        "performance": 0.7,
+        "support": 0.1,
+        "timeliness": 0.1,
+        "novelty": 0.1
+    },
+    "peer_group_size": 20,
     "output_attributes": {
         "numerical": [
             "unitEventGrade",

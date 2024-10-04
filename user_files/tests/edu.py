@@ -26,6 +26,8 @@ ratios_nonfollowers = []
 t_test_data = []
 recommendation_counts = {}
 kpi_dict = {}
+maps = []
+performances = []
 
 def plot_rec_statistics():
     fractions = [
@@ -85,22 +87,24 @@ def plot_t_test():
     nonfollowers = [performance for followed, performance in t_test_data if not followed]
     t_stat, p_value = stats.ttest_ind(followers, nonfollowers)
     plt.figure(figsize=(10, 6))
-    sns.kdeplot(followers, label='followers', color='green', shade=True)
-    sns.kdeplot(nonfollowers, label='non-followers', color='red', shade=True)
+    sns.kdeplot(followers, label=f'{len(followers)} followers', color='green', shade=True, clip=(0, 1))
+    sns.kdeplot(nonfollowers, label=f'{len(nonfollowers)} non-followers', color='red', shade=True, clip=(0, 1))
     plt.title("Effect of Following a Recommendation on Performance")
     plt.text(1.05, 0.5, f"T-statistic: {t_stat:.4f}\nP-value: {p_value:.4f}", ha='left', va='center', fontsize=10, rotation=90, transform=plt.gca().transAxes)
     plt.xlabel('performance')
     plt.ylabel('density')
     plt.legend()
     plt.tight_layout()
+    
     plt.savefig(os.path.join(plot_dir_path, 't_test.svg'))
 
 def plot_coverage():
     plt.figure(figsize=(10, 6))
-    sns.histplot(recommendation_counts.values(), stat='density', bins=30, kde=True, palette='viridis')
-    mean_value = np.mean(list(recommendation_counts.values()))
+    total = sum(list(recommendation_counts.values()))
+    normalized = [v / total for v in recommendation_counts.values()]
+    sns.histplot(normalized, stat='density', bins=100, kde=True, palette='viridis')
+    mean_value = np.mean(normalized)
     plt.axvline(mean_value, color='red', linestyle='--', label=f'Mean: {round(mean_value * 100)}%')
-    plt.ylim(0, 1)
     plt.xlabel('recommendations')
     plt.ylabel('courses')
     plt.title('Coverage')
@@ -127,6 +131,35 @@ def plot_component_kpis():
     plt.tight_layout()
     plt.savefig(os.path.join(plot_dir_path, 'component_kpis.svg'))
 
+def plot_correlation():
+    pearson_corr, _ = stats.pearsonr(maps, performances)
+    spearman_corr, _ = stats.spearmanr(maps, performances)
+    plt.figure(figsize=(10, 6))
+    sns.scatterplot(x=maps, y=performances, label=f"r1 = {pearson_corr:.2f}, r2 = {spearman_corr}, {len(maps)} pairs", palette=['blue'])
+    sns.regplot(x=maps, y=performances, scatter=False)
+    plt.title('Correlation', fontsize=14)
+    plt.xlabel('mean average precision', fontsize=12)
+    plt.ylabel('performance', fontsize=12)
+    plt.legend()
+    plt.savefig(os.path.join(plot_dir_path, 'correlation.svg'))
+
+def average_precision(list1, list2):
+    if not list1:
+        return 0
+    if not list2:
+        return None
+    s1 = set(list1)
+    s2 = set(list2)
+    return len(s1.intersection(s2)) / len(s1.union(s2))
+    score = 0.0
+    num_hits = 0.0
+    for i, rec in enumerate(list1):
+        if rec in list2:
+            num_hits += 1
+            precision_at_i = num_hits / (i + 1)
+            score += precision_at_i
+    return score / len(list2)
+
 def evaluate(commons: list[Common]):
     for common in tqdm.tqdm(commons, 'Evaluating training-testing set pairs'):
         synchronize(common)
@@ -142,10 +175,12 @@ def evaluate(commons: list[Common]):
             past_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] <= common.training_period[1]]
             past_normalized_df = full_normalized_df[full_normalized_df.index.isin(past_original_df.index)]
             future_original_df = full_original_df[full_original_df[common.conf.event_log_specs.timestamp] > common.training_period[1]]
-            recommendation = Pipeline(df=past_normalized_df).get_best_recommendation()
-            if not recommendation:
+            performance = KPIUtils.instance.compute_kpi(full_normalized_df)[1]
+            recommendations = Pipeline(df=past_normalized_df).get_all_recommendations(interactive=True)
+            if not recommendations:
                 no_recommendation.append(True)
                 continue
+            recommendation = recommendations[0]
             course = recommendation.event[activity_col]
             no_recommendation.append(False)
             already_passed.append('Bestanden' in list(past_normalized_df[past_normalized_df[activity_col].isin([recommendation.event[activity_col]])]['state']))
@@ -162,13 +197,41 @@ def evaluate(commons: list[Common]):
             courses_taken_next_semester = list(future_original_df[future_original_df['relative_semester'] == target_semester][activity_col])
             followed = course in courses_taken_next_semester
             mask.append(followed)
-            performance = KPIUtils.instance.compute_kpi(full_normalized_df)[1]
             if performance:
                 if followed:
-                    ratios_followers.append(recommendation.kpi / performance)
+                    ratios_followers.append(recommendation.peer_kpi / performance)
                 else:
-                    ratios_nonfollowers.append(recommendation.kpi / performance)
-            t_test_data.append((followed, performance))
+                    ratios_nonfollowers.append(recommendation.peer_kpi / performance)
+            recommended_activities = [r.event[common.conf.event_log_specs.activity] for r in recommendations]
+            recommended_activities = recommended_activities[:min(len(recommended_activities), 3)]
+            map_val = average_precision(recommended_activities, courses_taken_next_semester)
+            if map_val is None:
+                continue
+            print(f'recommended: {recommended_activities[:min(len(recommended_activities), 3)]}')
+            print(f'actual: {courses_taken_next_semester}')
+            print(f'map: {map_val}, performance: {performance}')
+            maps.append(map_val)
+            performances.append(performance)
+            try:
+                print(f'{stats.spearmanr(maps, performances)}')
+                print(f'{stats.pearsonr(maps, performances)}')
+            except Exception as e:
+                pass
+            print(f'{len(ratios_followers)} followers, {len(ratios_nonfollowers)} non-followers')
+            #t_test_data.append((followed, performance))
+            for act in recommended_activities:
+                if act in courses_taken_next_semester:
+                    t_test_data.append((True, performance))
+                    break
+            if not set(recommended_activities).intersection(set(courses_taken_next_semester)):
+                t_test_data.append((False, performance))
+            followers = [performance for followed, performance in t_test_data if followed]
+            nonfollowers = [performance for followed, performance in t_test_data if not followed]
+            try:
+                print(stats.mannwhitneyu(followers, nonfollowers))
+            except Exception as e:
+                pass
+            print(f'{len(ratios_followers)} followers, {len(ratios_nonfollowers)} non-followers')
             recommendation_counts[course] += 1
             for k, v in recommendation.kpi_dict.items():
                 if k in kpi_dict:

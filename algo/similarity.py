@@ -1,7 +1,7 @@
 from common import *
 from scipy.stats import wasserstein_distance
 
-def similarity_between_events(row1, row2, just_attributes=False):
+def similarity_between_events(row1, row2):
     common = Common.instance
     def ap():
         if row1[common.conf.event_log_specs.activity] != row2[common.conf.event_log_specs.activity]:
@@ -31,6 +31,8 @@ def similarity_between_events(row1, row2, just_attributes=False):
         'ap': ap(),
         'tep': tep(),
     }
+    if not sims['ap']:
+        return 0
     weights = {
         'ap': common.conf.similarity_weights.activity / 2,
         'tep': common.conf.similarity_weights.timestamp / 2,
@@ -39,14 +41,12 @@ def similarity_between_events(row1, row2, just_attributes=False):
         sim = ceap(cat_attr)
         if sim is not None:
             sims[f'ceap({cat_attr})'] = sim
-            weights[f'ceap({cat_attr})'] = weight
+            weights[f'ceap({cat_attr})'] = weight / 2
     for num_attr, weight in common.conf.similarity_weights.numerical_event_attributes.items():
         sim = neap(num_attr)
         if sim is not None:
             sims[f'neap({num_attr})'] = sim
             weights[f'neap({num_attr})'] = weight / 2
-    if just_attributes:
-        weights['ap'] = 0
     result = sum([sims[k] * weights[k] for k in sims.keys()]) / sum(weights.values())
     if pd.isna(result):
         raise ValueError("Similarity must be a number!")
@@ -75,6 +75,22 @@ def similarity_between_trace_headers(df1, df2):
         cosine_sim = np.dot(vec1, vec2) / denominator if denominator else 1
         c_sims.append(cosine_sim)
         return sum(c_sims) / 4
+    def acap(attr):
+        vecs = []
+        for df in [df1, df2]:
+            all_categories = set(df1[attr].dropna()).union(df2[attr].dropna())
+            vec = {}
+            for cat in all_categories:
+                if cat in df[attr]:
+                    vec[cat] = len(df[df[attr] == cat])
+                else:
+                    vec[cat] = 0
+            vecs.append(vec)
+        vecs.append(vec)
+        vec1 = list(vecs[0].values())
+        vec2 = list(vecs[1].values())
+        denominator = np.linalg.norm(vec1) * np.linalg.norm(vec2)
+        return np.dot(vec1, vec2) / denominator if denominator else 1
     def ctap(attr):
         r = 1 if df1[attr].iloc[0] == df2[attr].iloc[0] else 0
         return r
@@ -112,6 +128,9 @@ def similarity_between_trace_headers(df1, df2):
         'ttp': common.conf.similarity_weights.timestamp / 2,
         'tlp': common.conf.similarity_weights.trace_length
     }
+    for cat_attr, weight in common.conf.similarity_weights.categorical_event_attributes.items():
+        sims[f"acap({cat_attr})"] = acap(cat_attr)
+        weights[f"acap({cat_attr})"] = weight / 2
     for cat_attr, weight in common.conf.similarity_weights.categorical_trace_attributes.items():
         sims[f"ctap({cat_attr})"] = ctap(cat_attr)
         weights[f"ctap({cat_attr})"] = weight
