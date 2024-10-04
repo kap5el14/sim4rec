@@ -94,11 +94,13 @@ def evaluate(commons: list[Common]):
                 print(f'{stats.pearsonr(maps, performances)}')
             except Exception as e:
                 pass
+            counter = 0
             for act in recommended_activities:
                 if act in actual_activities:
-                    t_test_data.append((True, performance))
-                    break
-            if not set(recommended_activities).intersection(set(actual_activities)):
+                    counter += 1
+            if counter == 2:
+                t_test_data.append((True, performance))
+            else:
                 t_test_data.append((False, performance))
             followers = [performance for followed, performance in t_test_data if followed]
             nonfollowers = [performance for followed, performance in t_test_data if not followed]
