@@ -32,7 +32,7 @@
             "case:ApplicationType": 0.05
         }
     },
-    "output_attributes": {
+    "output_format": {
         "numerical": [
             "FirstWithdrawalAmount",
             "NumberOfTerms",

@@ -14,10 +14,10 @@ class RecommendationUtils:
         for case_id, performance in performance_dict.items():
             df = common.train_df[common.train_df[common.conf.event_log_specs.case_id] == case_id]
             for act in self.activity_performance_dict.keys():
-                occurrences = df[df[common.conf.event_log_specs.activity] == act][ACTIVITY_OCCURRENCE]
-                if not occurrences.empty:
-                    self.activity_performance_dict[act].append(float(occurrences.iloc[-1] * performance[1]))
-                    sums[act] += occurrences.iloc[-1]
+                occurrences = len(df[df[common.conf.event_log_specs.activity] == act])
+                if occurrences:
+                    self.activity_performance_dict[act].append(float(occurrences * performance[1]))
+                    sums[act] += occurrences
         self.activity_performance_dict = {k: np.sum(v) / sums[k] if v and sums[k] else 0.5 for k, v in self.activity_performance_dict.items()}
 
     def _normalize(self, v) -> float:
@@ -51,6 +51,7 @@ class RecommendationCandidate:
     timeliness: float
     peer_performance: float
     kpi_dict: dict[str, float]
+    temporal_offset: timedelta
 
     def __post_init__(self):
         self.similar_candidates = []
@@ -65,14 +66,14 @@ class RecommendationCandidate:
         peer_future_df = complete_peer_df.iloc[len(peer_df):]
         peer_future_df = peer_future_df[:min(len(peer_future_df), common.conf.horizon)]
         min_index = peer_future_df[INDEX].min()
-        proximities = peer_future_df[INDEX].transform(lambda x: x - min_index)
+        proximities = peer_future_df[INDEX].transform(lambda x: max(0, 1 - 2 * (x - min_index)))
         kpi_dict, fp = KPIUtils.instance.compute_kpi(complete_peer_df)
         candidates = []
         for i in range(len(peer_future_df)):
             is_output_activity = False
             acted_on = False
+            row = peer_future_df.iloc[i]
             for j in range(len(df)):
-                row = peer_future_df.iloc[i]
                 is_output_activity = row[common.conf.event_log_specs.activity] in common.conf.output_format.activities
                 if not is_output_activity:
                     break
@@ -81,7 +82,8 @@ class RecommendationCandidate:
                     acted_on = True
                     break
             if is_output_activity and not acted_on:
-                candidates.append(RecommendationCandidate(row=row, timeliness=proximities.iloc[i], peer_performance=fp, kpi_dict=kpi_dict))
+                temporal_offset = common.conf.df.loc[row.name][common.conf.event_log_specs.timestamp] - common.conf.df.loc[peer_df.iloc[-1].name][common.conf.event_log_specs.timestamp]
+                candidates.append(RecommendationCandidate(row=row, timeliness=proximities.iloc[i], peer_performance=fp, kpi_dict=kpi_dict, temporal_offset=temporal_offset))
         return candidates
 
 @dataclass
@@ -89,6 +91,7 @@ class Recommendation:
     cluster: list[RecommendationCandidate]
     all_peers: list[tuple[float, pd.DataFrame]]
     id: int
+    last_timestamp: datetime
     supporting_peers: set[str] = field(init=False, default=None)
     event: pd.Series = field(init=False, default=None)
     support: float = field(init=False, default=None)
@@ -173,20 +176,21 @@ class Recommendation:
         candidates_df = pd.DataFrame([common.conf.df.loc[c.row.name] for c in self.cluster])
         numerical_cols = candidates_df[common.conf.output_format.numerical_attributes]
         categorical_cols = candidates_df[common.conf.output_format.categorical_attributes]
-        timestamp_cols = candidates_df[common.conf.output_format.timestamp_attributes]
+        temporal_cols = candidates_df[common.conf.output_format.timestamp_attributes]
         attributes = []
         if not numerical_cols.empty:
             attributes.append(numerical_cols.median())
         if not categorical_cols.empty:
             attributes.append(categorical_cols.mode().iloc[0])
-        if not timestamp_cols.empty:
+        if not temporal_cols.empty:
             if pd.api.types.is_datetime64tz_dtype(common.conf.df[common.conf.event_log_specs.timestamp]):
                 unix_epoch = pd.Timestamp("1970-01-01", tz='UTC')
             else:
                 unix_epoch = pd.Timestamp("1970-01-01")
-            attributes.append(timestamp_cols.apply(lambda x: x.median()).apply(lambda x: unix_epoch + pd.to_timedelta(x, unit='s')))
+            attributes.append(temporal_cols.apply(lambda x: x.median()).apply(lambda x: unix_epoch + pd.to_timedelta(x, unit='s')))
         self.event = pd.concat(attributes).dropna()
         self.normalized_event = common.normalize(pd.DataFrame([self.event])).iloc[0]
+        self.event[common.conf.event_log_specs.timestamp] = self.last_timestamp + np.median([c.temporal_offset for c in self.cluster])
         sims = []
         for i, can1 in enumerate(self.cluster):
             for j, can2 in enumerate(self.cluster):
@@ -200,7 +204,7 @@ class Recommendation:
         
 
     @classmethod
-    def generate_recommendations(cls, candidates: list[RecommendationCandidate], dfs) -> list['Recommendation']:
+    def generate_recommendations(cls, candidates: list[RecommendationCandidate], dfs, last_timestamp) -> list['Recommendation']:
         common = Common.instance
         n = len(candidates)
         distance_matrix = np.zeros((n, n))
@@ -211,11 +215,11 @@ class Recommendation:
         clusters = {can.row[common.conf.event_log_specs.activity]: set() for can in candidates}
         for can in candidates:
             clusters[can.row[common.conf.event_log_specs.activity]].add(can)
-        recommendations = [Recommendation(cluster=cluster, all_peers=dfs, id=rec_index) for rec_index, cluster in enumerate(clusters.values())]
+        recommendations = [Recommendation(cluster=cluster, all_peers=dfs, id=rec_index, last_timestamp=last_timestamp) for rec_index, cluster in enumerate(clusters.values())]
         recommendations = [r for r in recommendations if r.score]
         return list(sorted(recommendations, key=lambda rec: rec.score, reverse=True))
 
-def make_recommendation(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame) -> list[Recommendation]:
+def make_recommendation(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame, last_timestamp) -> list[Recommendation]:
     n = len(dfs)
     candidates_map = {}
     average_sim = np.mean([sim for sim, df in dfs])
@@ -226,7 +230,7 @@ def make_recommendation(dfs: list[tuple[float, pd.DataFrame]], df: pd.DataFrame)
     for _, vals in candidates_map.items():
         candidates += vals
     if candidates:
-        recommendations = Recommendation.generate_recommendations(candidates=candidates, dfs=dfs)
+        recommendations = Recommendation.generate_recommendations(candidates=candidates, dfs=dfs, last_timestamp=last_timestamp)
         if recommendations:
             return recommendations
     return []

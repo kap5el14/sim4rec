@@ -83,6 +83,16 @@ class KPIUtils:
                 else:
                     raise ValueError
                 kpi_weights[name] = v2[2]
+        for k, v in common.conf.performance_weights.activity_occurrences.items():
+            occurrences = df[df['event'] == k][ACTIVITY_OCCURRENCE].iloc[-1] if k in df['event'].values else 0
+            if v[0] == 'min':
+                result = 1 - occurrences
+            elif v[0] == 'max':
+                result = occurrences
+            else:
+                raise ValueError
+            kpi_dict[k] = result
+            kpi_weights[k] = v[1]
         performance = max(0, min(1, sum([kpi_dict[k] * kpi_weights[k] for k in kpi_dict.keys()])))
         self.performance_dict[case_id] = (kpi_dict, performance)
         return self.normalize((kpi_dict, performance))

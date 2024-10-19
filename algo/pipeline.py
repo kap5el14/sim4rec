@@ -10,9 +10,10 @@ class Pipeline:
         self.df = df
         self.df.columns = self.df.columns.str.strip()
         self.df[common.conf.event_log_specs.timestamp] = pd.to_datetime(self.df[common.conf.event_log_specs.timestamp], format='mixed')
+        last_timestamp = pd.to_datetime(self.df[common.conf.event_log_specs.timestamp], unit='s').iloc[-1]
         self.df, _ = common.preprocess(df=self.df)
         self.peers = sample_peers(self.df)
-        self.recommendations = make_recommendation(dfs=self.peers, df=self.df)
+        self.recommendations = make_recommendation(dfs=self.peers, df=self.df, last_timestamp=last_timestamp)
         
     def __str__(self, n=None):
         result = ''

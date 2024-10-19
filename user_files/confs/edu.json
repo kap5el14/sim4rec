@@ -31,22 +31,23 @@
         }
     },
     "optimize": {
-        "performance": 0.7,
-        "support": 0.1,
-        "timeliness": 0.1,
-        "novelty": 0.1
+        "performance": 0.5,
+        "support": 0.25,
+        "timeliness": 0.25
     },
     "peer_group_size": 20,
-    "output_attributes": {
-        "numerical": [
-            "unitEventGrade",
-            "rewardAmount"
-        ],
-        "categorical": [
-            "state",
-            "relative_semester"
-        ],
-        "timestamp": []
+    "output_format": {
+        "attributes": {
+            "numerical": [
+                "unitEventGrade",
+                "rewardAmount"
+            ],
+            "categorical": [
+                "state",
+                "relative_semester"
+            ],
+            "timestamp": []
+        }
     },
     "evaluation": {
         "training_size": 100,

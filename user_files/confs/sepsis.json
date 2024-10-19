@@ -40,15 +40,25 @@
             "SIRSCriteria2OrMore": 0.1
         }
     },
-    "optimize": {
-        "performance": 0.6,
-        "support": 0.2,
-        "timeliness": 0.2
+    "performance_weights": {
+        "trace_length": 0.33,
+        "trace_duration": 0.33,
+        "activity_occurrences": {
+            "Return ER": ["min", 0.34]
+        }
     },
-    "output_attributes": {
-        "categorical": [
-            "org:group"
-        ]
+    "optimize": {
+        "performance": 0.5,
+        "support": 0.25,
+        "timeliness": 0.2,
+        "novelty": 0.05
+    },
+    "output_format": {
+        "attributes": {
+            "categorical": [
+                "org:group"
+            ]
+        }
     },
     "horizon": 4,
     "evaluation": {

@@ -27,6 +27,7 @@ import os
 from datetime import timedelta, datetime
 import copy
 from scipy import stats
+import time
 
 
 @dataclass
@@ -60,6 +61,7 @@ class PerformanceWeights:
     numerical_trace_attributes: dict[str, float]
     categorical_trace_attributes: dict[str, float]
     numerical_event_attributes: dict[str, list]
+    activity_occurrences: dict[str, list]
 
     def get_all_numerical_attributes(self):
         res = list(self.numerical_trace_attributes.keys()) + [TRACE_LENGTH, TRACE_DURATION]
@@ -157,7 +159,8 @@ class Configuration:
                 trace_duration=try_read(['performance_weights', 'trace_duration']),
                 numerical_trace_attributes=try_read(['performance_weights', 'numerical_trace_attributes'], default={}),
                 categorical_trace_attributes=try_read(['performance_weights', 'categorical_trace_attributes'], default={}),
-                numerical_event_attributes=try_read(['performance_weights', 'numerical_event_attributes'], default={})
+                numerical_event_attributes=try_read(['performance_weights', 'numerical_event_attributes'], default={}),
+                activity_occurrences=try_read(['performance_weights', 'activity_occurrences'], default={})
                 )
             if 'performance_weights' not in config:
                 if try_read(['just_prediction']):
@@ -182,10 +185,10 @@ class Configuration:
             self.horizon = try_read(['horizon'], default=math.inf)
             self.peer_group_size = try_read(['peer_group_size'], default=10)
             self.output_format = OutputFormat(
-                numerical_attributes=try_read(['output_attributes', 'numerical'], default=[]),
-                categorical_attributes=try_read(['output_attributes', 'categorical'], default=[]) + [self.event_log_specs.activity],
-                timestamp_attributes=try_read(['output_attributes', 'timestamp'], default=[]),
-                activities=try_read(['output_attributes', 'activities'], default=list(self.df[self.event_log_specs.activity].unique()))
+                numerical_attributes=try_read(['output_format', 'attributes', 'numerical'], default=[]),
+                categorical_attributes=try_read(['output_format', 'attributes', 'categorical'], default=[]) + [self.event_log_specs.activity],
+                timestamp_attributes=try_read(['output_format', 'attributes', 'timestamp'], default=[]),
+                activities=try_read(['output_format', 'activities'], default=list(self.df[self.event_log_specs.activity].unique()))
             )
             self.evaluation_datasets_format = EvaluationDatasetsFormat(
                 training_size=try_read(['evaluation', 'training_size'], default=math.inf),
@@ -258,14 +261,14 @@ class Common:
                 def normalize(row):
                     if pd.isna(row[attr]):
                         return row
-                    if row[attr] <= perc_values[0]:
+                    if row[attr] < perc_values[0]:
                         row[attr] = 0.0
                         return row
                     elif row[attr] >= perc_values[-1]:
                         row[attr] = 1.0
                         return row
                     for i in range(1, len(perc_values)):
-                        if row[attr] <= perc_values[i]:
+                        if row[attr] < perc_values[i]:
                             lower_bound = perc_values[i-1]
                             upper_bound = perc_values[i]
                             if upper_bound == lower_bound:

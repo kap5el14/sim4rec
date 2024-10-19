@@ -5,38 +5,100 @@ from algo.recommendation import Recommendation
 from util.synchronize import synchronize
 
 plot_dir_path = os.path.join('evaluation_results', 'sepsis')
-no_recommendation = []
+actual_activities = {}
 recommended_activities = {}
-maps = []
+jaccard_sims = []
 performances = []
-t_test_data = []
+u_test_data = []
+elapsed_times = []
 
-def plot_rec_statistics():
-    fractions = [
-        sum(no_recommendation) / len(no_recommendation)
-    ]
-    plt.figure(figsize=(10, 6))
-    bar_plot = sns.barplot(x=['no recommendations'], y=fractions, palette="rocket_r")
-    plt.ylim(0, 1)
-    plt.tight_layout()
-    plt.title('Recommendation Statistics')
-    for i, v in enumerate(fractions):
-        bar_plot.text(i, v, f'{round(v * 100)}%', ha='center', va='bottom')
-    plt.savefig(os.path.join(plot_dir_path, 'rec_statistics.svg'))
-
-def plot_correlation():
-    pearson_corr, _ = stats.pearsonr(maps, performances)
-    spearman_corr, _ = stats.spearmanr(maps, performances)
-    plt.figure(figsize=(10, 6))
-    sns.scatterplot(x=maps, y=performances, label=f"r1 = {pearson_corr:.2f}, r2 = {spearman_corr}, {len(maps)} pairs", palette=['blue'])
-    sns.regplot(x=maps, y=performances, scatter=False)
-    plt.title('Correlation', fontsize=14)
-    plt.xlabel('mean average precision', fontsize=12)
-    plt.ylabel('performance', fontsize=12)
+def visualize_runtime():
+    mean_time = np.mean(elapsed_times)
+    plt.figure(figsize=(8, 6))
+    sns.boxplot(elapsed_times, color='skyblue', showfliers=False)
+    plt.axhline(mean_time, color='red', linestyle='--', label=f'Mean: {mean_time:.4f} s')
     plt.legend()
-    plt.savefig(os.path.join(plot_dir_path, 'correlation.svg'))
+    plt.title('Sepsis Patients: Recommendation Time')
+    plt.ylabel('Time (seconds)')
+    plt.savefig(os.path.join(plot_dir_path, 'runtime.png'))
 
-def average_precision(list1, list2):
+def visualize_rec_effect(followers, nonfollowers):
+    followers = np.array(followers)
+    nonfollowers = np.array(nonfollowers)
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    fig.suptitle('Sepsis Patients: Effect of Following Recommendations on Performance', fontsize=16)
+    sns.histplot(followers, kde=True, color='blue', label='followers', ax=axes[0, 0], stat='density', bins=20)
+    sns.histplot(nonfollowers, kde=True, color='orange', label='non-followers', ax=axes[0, 0], stat='density', bins=20)
+    axes[0, 0].set_title('Histogram with KDE')
+    axes[0, 0].legend()
+
+    sns.kdeplot(followers, color='blue', label='followers', ax=axes[0, 1], shade=True, clip=(0, 1))
+    sns.kdeplot(nonfollowers, color='orange', label='non-followers', ax=axes[0, 1], shade=True, clip=(0, 1))
+    axes[0, 1].set_title('Kernel Density Estimate (KDE)')
+    axes[0, 1].legend()
+
+    sns.boxplot(data=[followers, nonfollowers], ax=axes[1, 0], palette=["blue", "orange"])
+    axes[1, 0].set_xticklabels(['followers', 'non-followers'])
+    axes[1, 0].set_title('Boxplot')
+
+    sns.violinplot(data=[followers, nonfollowers], ax=axes[1, 1], palette=["blue", "orange"], cut=0)
+    axes[1, 1].set_xticklabels(['followers', 'non-followers'])
+    axes[1, 1].set_title('Violin Plot')
+
+    fig.text(0.5, 0.06, f'{len(followers)} followers, {len(nonfollowers)} non-followers', ha='center', fontsize=12)
+    u_test_result = stats.mannwhitneyu(followers, nonfollowers)
+    fig.text(0.5, 0.02, f'U-statistic: {u_test_result.statistic}, p-value: {u_test_result.pvalue}', ha='center', fontsize=12)
+
+    plt.tight_layout(rect=[0, 0.1, 1, 0.96])
+    plt.savefig(os.path.join(plot_dir_path, 'recommendation_effect.png'))
+
+
+def visualize_prediction(jaccard_sims):
+    jaccard_sims = np.array(jaccard_sims)
+    plt.figure(figsize=(10, 6))
+    plt.title('Sepsis Patients: Predictive Accuracy of Recommendations')
+    sns.kdeplot(jaccard_sims, color='blue', shade=True, clip=(0, 1))
+    plt.savefig(os.path.join(plot_dir_path, 'predictive_strength.png'))
+
+def visualize_activities():
+    pairs = {}
+    for k in set(actual_activities.keys()).union(set(recommended_activities.keys())):
+        pairs[k] = [0, 0]
+    for k, v in actual_activities.items():
+        pairs[k][0] = v
+    for k, v in recommended_activities.items():
+        pairs[k][1] = v
+        labels = list(pairs.keys())
+    total_actual = sum([v[0] for v in pairs.values()])
+    actual_values = [v[0] / total_actual for v in pairs.values()]
+    total_recommended = sum([v[0] for v in pairs.values()])
+    recommended_values = [v[1] / total_recommended for v in pairs.values()]
+    x = np.arange(len(labels))
+    width = 0.35
+    fig, ax = plt.subplots(figsize=(10, 6))
+    rects1 = ax.bar(x - width/2, actual_values, width, label='actual', color='blue')
+    rects2 = ax.bar(x + width/2, recommended_values, width, label='recommended', color='orange')
+    ax.set_xlabel('activities')
+    ax.set_ylabel('density')
+    ax.set_title('Sepsis Patients: Actual vs Recommended Activities')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha='right')
+    ax.legend()
+    def autolabel(rects):
+        for rect in rects:
+            height = rect.get_height()
+            ax.annotate(f'',
+                        xy=(rect.get_x() + rect.get_width() / 2, height),
+                        xytext=(0, 3),
+                        textcoords="offset points",
+                        ha='center', va='bottom')
+    autolabel(rects1)
+    autolabel(rects2)
+    plt.tight_layout()
+    plt.savefig(os.path.join(plot_dir_path, 'activities.png'))
+
+
+def jaccard(list1, list2):
     if not list1:
         return 0
     if not list2:
@@ -48,7 +110,7 @@ def average_precision(list1, list2):
 def evaluate(commons: list[Common]):
     used_case_ids = set()
     for common in tqdm.tqdm(commons, 'Evaluating training-testing set pairs'):
-        synchronize(common)
+        synchronize(common)        
         print(f'Training period: {common.training_period}')
         activity_col = common.conf.event_log_specs.activity
         case_ids = common.test_df[common.conf.event_log_specs.case_id].unique()
@@ -62,54 +124,60 @@ def evaluate(commons: list[Common]):
                 continue
             cutting_point = random.sample(range(1, len(full_original_df)), 1)[0]
             past_original_df = full_original_df.iloc[:cutting_point]
-
             if str(past_original_df[activity_col].iloc[-1]).startswith('Release'):
                 continue
-            past_normalized_df = full_normalized_df[full_normalized_df.index.isin(past_original_df.index)]
             future_original_df = full_original_df[cutting_point:]
-            actual_activities = list(future_original_df[(future_original_df[common.conf.event_log_specs.timestamp] - past_original_df[common.conf.event_log_specs.timestamp].iloc[-1]) <= pd.Timedelta(days=2)][common.conf.event_log_specs.activity])
-            actual_activities = actual_activities[:min(len(actual_activities), 3)]
-            if not actual_activities:
+            true_activities = list(future_original_df[(future_original_df[common.conf.event_log_specs.timestamp] - past_original_df[common.conf.event_log_specs.timestamp].iloc[-1]) <= pd.Timedelta(days=2)][common.conf.event_log_specs.activity])
+            true_activities = true_activities[:min(len(true_activities), 3)]
+            if not true_activities:
                 continue
             performance = KPIUtils.instance.compute_kpi(full_normalized_df)[1]
-            recommendations = Pipeline(df=past_normalized_df).get_all_recommendations(interactive=True)
+            start_time = time.time()
+            recommendations = Pipeline(df=past_original_df).get_all_recommendations(interactive=True)
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            elapsed_times.append(elapsed_time)
             if not recommendations:
-                no_recommendation.append(True)
                 continue
-            recommendation = recommendations[0]
-            no_recommendation.append(False)
-            recommended_activities = [r.event[common.conf.event_log_specs.activity] for r in recommendations]
-            recommended_activities = recommended_activities[:min(len(recommended_activities), 2)]
-
-            print(f'recommended: {recommended_activities}')
-            print(f'actual: {actual_activities}')
-            map_val = average_precision(recommended_activities, actual_activities)
-            if map_val is None:
+            proposed_activities = [r.event[common.conf.event_log_specs.activity] for r in recommendations]
+            proposed_activities = proposed_activities[:min(len(proposed_activities), 2)]
+            for k in true_activities:
+                if k not in actual_activities:
+                    actual_activities[k] = 1
+                else:
+                    actual_activities[k] += 1
+            for k in proposed_activities:
+                if k not in recommended_activities:
+                    recommended_activities[k] = 1
+                else:
+                    recommended_activities[k] += 1
+            print(f'recommended: {proposed_activities}')
+            print(f'actual: {true_activities}')
+            jaccard_sim = jaccard(proposed_activities, true_activities)
+            if jaccard_sim is None:
                 continue
-            print(f'map: {map_val}, performance: {performance}')
-            maps.append(map_val)
+            print(f'Jaccard similarity: {jaccard_sim}, performance: {performance}')
+            jaccard_sims.append(jaccard_sim)
             performances.append(performance)
-            try:
-                print(f'{stats.spearmanr(maps, performances)}')
-                print(f'{stats.pearsonr(maps, performances)}')
-            except Exception as e:
-                pass
             counter = 0
-            for act in recommended_activities:
-                if act in actual_activities:
+            for act in proposed_activities:
+                if act in true_activities:
                     counter += 1
-            if counter == 2:
-                t_test_data.append((True, performance))
+            if counter >= min(2, len(true_activities)):
+                u_test_data.append((True, performance))
             else:
-                t_test_data.append((False, performance))
-            followers = [performance for followed, performance in t_test_data if followed]
-            nonfollowers = [performance for followed, performance in t_test_data if not followed]
+                u_test_data.append((False, performance))
+            followers = [performance for followed, performance in u_test_data if followed]
+            nonfollowers = [performance for followed, performance in u_test_data if not followed]
             print(f'{len(followers)} followers, {len(nonfollowers)} non-followers')
             try:
-                print(stats.mannwhitneyu(followers, nonfollowers))
+                u_test_result = stats.mannwhitneyu(followers, nonfollowers)
+                print(u_test_result)
+                print(f'correlation: {u_test_result.statistic / (len(followers) * len(nonfollowers))}')
             except Exception as e:
                 pass
 
-            
-    
-    plot_correlation()
+    visualize_runtime()
+    visualize_rec_effect(followers, nonfollowers)
+    visualize_prediction(jaccard_sims)
+    visualize_activities()

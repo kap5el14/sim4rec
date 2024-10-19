@@ -29,7 +29,7 @@
             "rewardAmount": [["max", "sum", 0.2]]
         }
     },
-    "output_attributes": {
+    "output_format": {
         "numerical": [
             "unitEventGrade",
             "rewardAmount"
