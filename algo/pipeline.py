@@ -42,7 +42,7 @@ class Pipeline:
         if interactive:
             print(self.__str__(n=n))
             json_output = Recommendation.to_json(recommendations)
-            pyperclip.copy(json_output)
+            #pyperclip.copy(json_output)
             html_content = json2html.convert(json=json_output)
             with open("recommendation.html", "w") as file:
                 file.write(html_content)

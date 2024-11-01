@@ -293,34 +293,16 @@ class Common:
                     row[ACTIVITY_OCCURRENCE] = np.nan
                     return row
                 return normalize
-            def create_timestamp_normalizer(attr):
-                min_val = base_df[attr].min()
-                max_val = base_df[attr].max()
-                def normalize(row):
-                    if max_val - min_val == 0:
-                        row[attr] = 0.5
-                        return row
-                    if row[attr] <= min_val:
-                        row[attr] = 0
-                        return row
-                    if row[attr] >= max_val:
-                        row[attr] = 1
-                        return row
-                    row[attr] = (row[attr] - min_val) / (max_val - min_val)
-                    return row
-                return normalize
             attribute_normalizers = {}
             numerical_event_attributes = set(self.conf.similarity_weights.numerical_event_attributes.keys()).union(self.conf.performance_weights.numerical_event_attributes.keys())
-            for attr in [TIME_FROM_TRACE_START, TIME_FROM_PREVIOUS_EVENT, INDEX, UNIQUE_ACTIVITIES, ACTIVITIES_MEAN, ACTIVITIES_STD] + list(itertools.chain.from_iterable([[attr, f'{attr}{CUMSUM}', f'{attr}{CUMAVG}', f'{attr}{MW_SUM}', f'{attr}{MW_AVG}'] for attr in numerical_event_attributes])):
+            for attr in [TIME_FROM_TRACE_START, TIME_FROM_PREVIOUS_EVENT, self.conf.event_log_specs.timestamp, INDEX, UNIQUE_ACTIVITIES, ACTIVITIES_MEAN, ACTIVITIES_STD] + list(itertools.chain.from_iterable([[attr, f'{attr}{CUMSUM}', f'{attr}{CUMAVG}', f'{attr}{MW_SUM}', f'{attr}{MW_AVG}'] for attr in numerical_event_attributes])):
                 perc_values = np.nanpercentile(base_df[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
                 attribute_normalizers[attr] = create_normalizer_with_percentiles(attr, perc_values)
             numerical_trace_attributes = set(self.conf.similarity_weights.numerical_trace_attributes.keys()).union(self.conf.performance_weights.numerical_trace_attributes.keys())
-            for attr in numerical_trace_attributes:
+            for attr in list(numerical_trace_attributes):
                 perc_values = np.nanpercentile(base_df.groupby(self.conf.event_log_specs.case_id).first()[attr], [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
                 attribute_normalizers[attr] = create_normalizer_with_percentiles(attr, perc_values)
             attribute_normalizers[ACTIVITY_OCCURRENCE] = create_activity_occurrences_normalizer()
-            for attr in [TRACE_START, self.conf.event_log_specs.timestamp]:
-                attribute_normalizers[attr] = create_timestamp_normalizer(attr)
             def normalize(df: pd.DataFrame) -> pd.DataFrame:
                 if df is None:
                     return

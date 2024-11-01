@@ -35,7 +35,6 @@
         "support": 0.25,
         "timeliness": 0.25
     },
-    "peer_group_size": 20,
     "output_format": {
         "attributes": {
             "numerical": [

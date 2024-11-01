@@ -200,7 +200,7 @@ class Recommendation:
         self.novelty = RecommendationUtils.instance.get_novelty(self.event[common.conf.event_log_specs.activity])
         #self.score = max(0, min(1, np.power(self.kpi * self.support * self.timeliness * self.coherence, 0.25)))
         #self.score = self.timeliness
-        self.score = self.timeliness * common.conf.optimization_goals.timeliness + np.power(self.peer_kpi * self.kpi_gain * self.activity_kpi, 1/3) * common.conf.optimization_goals.performance + self.support * common.conf.optimization_goals.support + self.novelty * common.conf.optimization_goals.novelty + self.coherence * common.conf.optimization_goals.coherence
+        self.score = self.timeliness * common.conf.optimization_goals.timeliness + (self.peer_kpi + self.kpi_gain + self.activity_kpi) / 3 * common.conf.optimization_goals.performance + self.support * common.conf.optimization_goals.support + self.novelty * common.conf.optimization_goals.novelty + self.coherence * common.conf.optimization_goals.coherence
         
 
     @classmethod

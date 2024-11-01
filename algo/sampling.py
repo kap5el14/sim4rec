@@ -23,9 +23,7 @@ def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=80, log=F
     if log:
         log_results = []
     for peer_df in dfs:
-        last_values = df[[TIME_FROM_TRACE_START, INDEX]].iloc[-1]
-        peer_df_filtered = peer_df[[TIME_FROM_TRACE_START, INDEX]]
-        difference_df = peer_df_filtered - last_values
+        difference_df = peer_df[[INDEX]] - df[[INDEX]].iloc[-1]
         row_differences = difference_df.abs().sum(axis=1)
         min_diff_index = row_differences.idxmin() - row_differences.index[0] + 1
         queue = []
@@ -47,7 +45,7 @@ def second_pass(dfs: list[pd.DataFrame], df: pd.DataFrame, sample_size=80, log=F
                 best_df = trimmed_df
                 if log:
                     new_log_result.append(i)
-                neighbors = [(i + 3, 1), (i - 3, 1), (i + 1, 2), (i - 1, 2)]
+                neighbors = [(i + 1, 2), (i - 1, 1)]
                 for neighbor, priority in neighbors:
                     if neighbor not in visited and 0 < neighbor < len(peer_df) + 1:
                         heapq.heappush(queue, (-current_sim, priority, neighbor))

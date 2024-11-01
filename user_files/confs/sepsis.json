@@ -60,7 +60,6 @@
             ]
         }
     },
-    "horizon": 4,
     "evaluation": {
         "training_size": 200,
         "testing_size": 200,

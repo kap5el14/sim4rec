@@ -110,7 +110,7 @@ def similarity_between_trace_headers(df1, df2):
         return sum(c_sims) / 2
     def ttp():
         c_sims = [
-            1 - abs(df1[TRACE_START].iloc[0] - df2[TRACE_START].iloc[0]),
+            1 - abs(df1[common.conf.event_log_specs.timestamp].iloc[0] - df2[common.conf.event_log_specs.timestamp].iloc[0]),
             1 - abs(df1[TIME_FROM_TRACE_START].iloc[-1] - df2[TIME_FROM_TRACE_START].iloc[-1]),
             1 - abs(df1[common.conf.event_log_specs.timestamp].iloc[-1] - df2[common.conf.event_log_specs.timestamp].iloc[-1])
         ]
@@ -162,7 +162,7 @@ def similarity_between_traces(df1, df2):
                     dp[i][j - 1] + 1,  
                     dp[i - 1][j - 1] + distance_matrix[i - 1, j - 1]  
                 )
-        return 1 - dp[m][n] / max(m,n)
+        return 1 - dp[m][n] / (m+n)
     def gm(distance_matrix, m, n):
         flattened = [(distance_matrix[i, j], (i, j)) for i in range(distance_matrix.shape[0]) for j in range(distance_matrix.shape[1])]
         sorted_flattened = sorted(flattened, key=lambda x: x[0])
@@ -215,14 +215,10 @@ def similarity_between_traces(df1, df2):
     sims = {
         'th': th_sim,
         'ed': ed(distance_matrix, num_rows_df1, num_rows_df2),
-        'gm': gm(distance_matrix, num_rows_df1, num_rows_df2),
-        'emd': emd(num_rows_df1, num_rows_df2)
     }
     weights = {
         'th': common.conf.similarity_weights.trace,
         'ed': common.conf.similarity_weights.event / 3,
-        'gm': common.conf.similarity_weights.event / 3,
-        'emd': common.conf.similarity_weights.event / 3
     }
     result = sum([sims[k] * weights[k] for k in sims.keys()])
     if pd.isna(result):
