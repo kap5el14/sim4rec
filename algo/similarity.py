@@ -3,9 +3,9 @@ from scipy.stats import wasserstein_distance
 
 def similarity_between_events(row1, row2):
     common = Common.instance
+    if row1[common.conf.event_log_specs.activity] != row2[common.conf.event_log_specs.activity]:
+        return 0
     def ap():
-        if row1[common.conf.event_log_specs.activity] != row2[common.conf.event_log_specs.activity]:
-            return 0
         if pd.isna(row1[ACTIVITY_OCCURRENCE]) or pd.isna(row2[ACTIVITY_OCCURRENCE]):
             return 1
         return 1 - abs(row1[ACTIVITY_OCCURRENCE] - row2[ACTIVITY_OCCURRENCE]) / 2
@@ -31,8 +31,6 @@ def similarity_between_events(row1, row2):
         'ap': ap(),
         'tep': tep(),
     }
-    if not sims['ap']:
-        return 0
     weights = {
         'ap': common.conf.similarity_weights.activity / 2,
         'tep': common.conf.similarity_weights.timestamp / 2,
@@ -218,7 +216,7 @@ def similarity_between_traces(df1, df2):
     }
     weights = {
         'th': common.conf.similarity_weights.trace,
-        'ed': common.conf.similarity_weights.event / 3,
+        'ed': common.conf.similarity_weights.event,
     }
     result = sum([sims[k] * weights[k] for k in sims.keys()])
     if pd.isna(result):

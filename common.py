@@ -6,18 +6,13 @@ import numpy as np
 from typing import Callable
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.manifold import MDS
-from sklearn.cluster import AgglomerativeClustering, KMeans
-import hdbscan
 import random
 import dill
 import heapq
 from collections import deque, Counter
-from sklearn.model_selection import KFold
 import pprint
 import tqdm
 import warnings
-import cProfile
 import itertools
 from copy import deepcopy
 import json
@@ -53,6 +48,26 @@ class SimilarityWeights:
         self.event = self.activity / 2 + self.timestamp / 2 + sum(list(self.numerical_event_attributes.values())) / 2 + sum(list(self.categorical_event_attributes.values())) / 2
         if not (0.99 <= self.trace + self.event <= 1.01):
             raise ValueError(f"Similarity weights sum up to {self.trace + self.event:.2f} != 1!")
+    
+    def get_all_numerical_attributes(self):
+        res = list(self.numerical_trace_attributes.keys()) + [TRACE_LENGTH, TRACE_DURATION]
+        for attr, _ in self.numerical_event_attributes.items():
+            res.append(attr)
+            res.append(f'{attr}{CUMSUM}')
+            res.append(f'{attr}{CUMAVG}')
+            res.append(f'{attr}{MW_SUM}')
+            res.append(f'{attr}{MW_AVG}')
+        return res
+    
+    def get_all_normalized_attributes(self):
+        return self.get_all_numerical_attributes() + list(self.numerical_trace_attributes.keys()) + list(self.categorical_trace_attributes.keys()) + list(self.categorical_event_attributes.keys())
+        
+    def get_all_categorical_attributes(self):
+        return [k for k,v in list(self.categorical_event_attributes.items()) + list(self.categorical_trace_attributes.items()) if v]
+
+    def get_all_original_attributes(self):
+        return list(self.numerical_event_attributes.keys()) + list(self.numerical_trace_attributes.keys()) + self.get_all_categorical_attributes()
+ 
 
 @dataclass
 class PerformanceWeights:
@@ -72,6 +87,12 @@ class PerformanceWeights:
             res.append(f'{attr}{MW_SUM}')
             res.append(f'{attr}{MW_AVG}')
         return res
+    def get_all_normalized_attributes(self):
+        return self.get_all_numerical_attributes() + list(self.categorical_trace_attributes.keys())
+    def get_all_categorical_attributes(self):
+        return [k for k,v in list(self.categorical_trace_attributes.items()) if v]
+    def get_all_original_attributes(self):
+        return list(self.numerical_event_attributes.keys()) + self.get_all_categorical_attributes()
     
 @dataclass
 class OptimizationGoals:
@@ -202,6 +223,11 @@ class Configuration:
         suffix = 'eval' if evaluation else 'normal'
         return os.path.join('data', name, suffix)
     
+    def get_all_normalized_attributes(self):
+        return [self.event_log_specs.case_id, self.event_log_specs.activity, self.event_log_specs.timestamp] + list(sorted(list(set(self.similarity_weights.get_all_normalized_attributes() + self.performance_weights.get_all_normalized_attributes())) + [TIME_FROM_PREVIOUS_EVENT, UNIQUE_ACTIVITIES, ACTIVITIES_MEAN, ACTIVITIES_STD, ACTIVITY_OCCURRENCE]))
+    
+    def get_all_original_attributes(self):
+        return [self.event_log_specs.case_id, self.event_log_specs.activity, self.event_log_specs.timestamp] + list(set(self.similarity_weights.get_all_original_attributes() + self.performance_weights.get_all_original_attributes()))
 
 @dataclass
 class Common:
@@ -355,6 +381,11 @@ class Common:
 
     def get_original(self, df) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         complete = self.conf.df[self.conf.df[self.conf.event_log_specs.case_id] == df[self.conf.event_log_specs.case_id].iloc[0]]
+        past = complete.iloc[:len(df)]
+        future = complete.iloc[len(df):]
+        return complete, past, future
+    def get_normalized(self, df) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        complete = self.train_df[self.train_df[self.conf.event_log_specs.case_id] == df[self.conf.event_log_specs.case_id].iloc[0]]
         past = complete.iloc[:len(df)]
         future = complete.iloc[len(df):]
         return complete, past, future

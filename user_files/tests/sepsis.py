@@ -176,6 +176,8 @@ def evaluate(commons: list[Common]):
                 print(f'correlation: {u_test_result.statistic / (len(followers) * len(nonfollowers))}')
             except Exception as e:
                 pass
+            #input()
+
 
     visualize_runtime()
     visualize_rec_effect(followers, nonfollowers)

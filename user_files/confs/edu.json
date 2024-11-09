@@ -23,7 +23,6 @@
             "study_duration": ["min", 0.5],
             "obtainedCredits": ["max", 0.1]
         },
-        "categorical_trace_attributes": {},
         "numerical_event_attributes": {
             "unitEventGrade": [
                 ["min", "avg", 0.3]
